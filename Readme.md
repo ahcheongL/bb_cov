@@ -40,3 +40,7 @@
 2. It will generate *.cov file for each source code (.c/.cc/.cpp) file.  
 Each line indicates whether a function or a basic block is covered.  
 F means function, and B means basic block.
+
+## 4. See results
+
+1. You can use bin/collect_cov.py script.

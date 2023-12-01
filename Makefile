@@ -31,8 +31,8 @@ all: bb_cov
 bb_cov: lib/bb_cov_pass.so lib/bb_cov_rt.a
 
 lib/bb_cov_pass.so: src/bb_cov_pass.cc include/bb_cov_pass.hpp
-
 	$(CXX) $(CXXFLAGS) -I include -shared $< -lLLVMDemangle -o $@
+
 lib/bb_cov_rt.a: src/bb_cov_rt.cc
 	$(CXX) $(CXXFLAGS) -I include -c $< -o src/bb_cov_rt.o
 	$(AR) rsv $@ src/bb_cov_rt.o
