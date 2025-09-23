@@ -26,9 +26,9 @@
 
 ## 2. Coverage instrumentation
 
-1. `opt -enable-new-pm=0 -load {$PROJECT_PATH}/lib/bb_cov_pass.so --bbcov < <target.bc> -o <out.bc>`
+1. `opt -load-pass-plugin={$PROJECT_PATH}/build/bb_cov_pass.so -passes=bbcov < <target.bc> -o <out.bc>`
 
-2. `clang++ <out.bc> <compile flags> -o <target.cov> -L {$PROJECT_PATH}/lib -l:bb_cov_rt.a`
+2. `clang++ <out.bc> <compile flags> -o <target.cov> -L {$PROJECT_PATH}/build -l:bb_cov_rt.a`
     * `<compile flags>` are usually shared libraries that are linked to the original target executable.
     * You can get list of shared linked shared libraries by running `ldd <target executable>`, if libpthread.so is linked, you need to put `-lpthread` as compile flags
 

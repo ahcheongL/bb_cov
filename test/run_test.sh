@@ -1,7 +1,11 @@
-rm out out.bc main.cc.cov
+set -e 
 
-opt -enable-new-pm=0 -load ../lib/bb_cov_pass.so --bbcov < main.bc -o out.bc
-clang++ out.bc -o out -L../lib -l:bb_cov_rt.a 
+rm -f out out.bc main.cc.cov main.bc
+
+clang -g -c -emit-llvm main.cc -o main.bc
+
+opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov < main.bc -o out.bc
+clang++ out.bc -o out -L../build -l:bb_cov_rt.a 
 ./out
 
 echo ""

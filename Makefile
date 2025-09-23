@@ -19,23 +19,22 @@ else
 	CXXFLAGS=`llvm-config --cxxflags` -fPIC -g -O2
 endif
 
-SMALL ?= 0
-ifeq ($(SMALL), 1)
-	CXXFLAGS += -DSMALL
-endif
-
 CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
+
+LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes`
 
 all: bb_cov
 
-bb_cov: lib/bb_cov_pass.so lib/bb_cov_rt.a
+bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a
 
-lib/bb_cov_pass.so: src/bb_cov_pass.cc include/bb_cov_pass.hpp
-	$(CXX) $(CXXFLAGS) -I include -shared $< -lLLVMDemangle -o $@
+build/bb_cov_pass.so: src/bb_cov_pass.cc include/bb_cov_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include -shared $< -o $@
 
-lib/bb_cov_rt.a: src/bb_cov_rt.cc
-	$(CXX) $(CXXFLAGS) -I include -c $< -o src/bb_cov_rt.o
-	$(AR) rsv $@ src/bb_cov_rt.o
+build/bb_cov_rt.a: src/bb_cov_rt.cc
+	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_rt.o
+	$(AR) rsv $@ build/bb_cov_rt.o
 
 clean:
-	rm -f lib/*.so lib/*.a src/*.o
+	rm -rf build/*
+
+$(info $(shell mkdir -p build))
