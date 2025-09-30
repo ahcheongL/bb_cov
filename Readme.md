@@ -36,10 +36,11 @@
 
 ## 3. Run coverage instrumented executable
 
-1. `<target.cov> <args>` ; Run it just same as usual executable.
-2. It will generate *.cov file for each source code (.c/.cc/.cpp) file.  
+1. `<target.cov> <args...> <output_fn>` ; Run it just same as usual executable, just add an output file path at the end.
+2. It will generate file `<output_fn>`
 Each line indicates whether a function or a basic block is covered.  
 F means function, and B means basic block.
+3. If `<output_fn>` already exists, the program reads the coverage and record accumulated coverage.
 
 ## 4. See results
 
