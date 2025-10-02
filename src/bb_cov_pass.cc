@@ -182,10 +182,9 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
 
     string BB_name = "";
     if (begin_line_num == -1) {
-      BB_name = func_name + "_bb_" + to_string(bb_name_count["bb"]++);
+      BB_name = "bb_" + to_string(bb_name_count["bb"]++);
     } else {
-      BB_name = func_name + "_" + to_string(begin_line_num) + ":" +
-                to_string(end_line_num);
+      BB_name = to_string(begin_line_num) + ":" + to_string(end_line_num);
 
       if (bb_name_count.find(BB_name) != bb_name_count.end()) {
         BB_name = BB_name + "_" + to_string(bb_name_count[BB_name]++);
