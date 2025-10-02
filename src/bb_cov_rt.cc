@@ -1,42 +1,23 @@
+#include "bb_cov_rt.hpp"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <fstream>
 #include <iostream>
-#include <map>
-#include <set>
 #include <sstream>
-#include <string>
-
-using namespace std;
 
 static const char *cov_output_fn = NULL;
 
 // Used for fast check of covered basic blocks
 static char *bb_cov_arr = NULL;
 
-struct FuncBBMap {
-  const char *func_name;
-  const char **bb_names;
-  const unsigned int size;
-};
-
-struct FileFuncMap {
-  const char *filename;
-  struct FuncBBMap *entries;
-  const unsigned int size;
-};
-
-extern "C" {
-// entire bb list generated at compile time
-extern struct FileFuncMap __bb_map[];
-extern unsigned int __bb_map_size;
-extern unsigned int __num_bbs;
-
 // coverage collected at runtime
 static map<const char *, map<const char *, map<const char *, bool>>>
     __replay_coverage_info;
+
+extern "C" {
 
 void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
   const int argc = (*argc_ptr) - 1;
@@ -66,8 +47,8 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
   // read __bb_map to initialize __replay_coverage_info
   unsigned int file_idx = 0;
   for (; file_idx < __bb_map_size; file_idx++) {
-    struct FileFuncMap &file_map = __bb_map[file_idx];
-    const char *filename = file_map.filename;
+    struct FileFuncMap                         &file_map = __bb_map[file_idx];
+    const char                                 *filename = file_map.filename;
     map<const char *, map<const char *, bool>> &func_map =
         __replay_coverage_info
             .try_emplace(filename, map<const char *, map<const char *, bool>>())
@@ -75,8 +56,8 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
 
     unsigned int func_idx = 0;
     for (; func_idx < file_map.size; func_idx++) {
-      struct FuncBBMap &func_map_entry = file_map.entries[func_idx];
-      const char *func_name = func_map_entry.func_name;
+      struct FuncBBMap        &func_map_entry = file_map.entries[func_idx];
+      const char              *func_name = func_map_entry.func_name;
       map<const char *, bool> &bb_map =
           func_map.try_emplace(func_name, map<const char *, bool>())
               .first->second;
@@ -94,9 +75,7 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
 
 void __record_bb_cov(const char *file_name, const char *func_name,
                      const char *bb_name, const unsigned int bb_id) {
-  if (bb_cov_arr[bb_id] == 1) {
-    return;
-  }
+  if (bb_cov_arr[bb_id] == 1) { return; }
 
   bb_cov_arr[bb_id] = 1;
 
@@ -126,13 +105,11 @@ void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
     map<const char *, map<const char *, bool>> &file_cov = file_iter.second;
     // merge with previous coverage info
     const map<string, set<string>> *prev_file_cov = NULL;
-    auto search = prev_cov.find(file_name);
-    if (search != prev_cov.end()) {
-      prev_file_cov = &(search->second);
-    }
+    auto                            search = prev_cov.find(file_name);
+    if (search != prev_cov.end()) { prev_file_cov = &(search->second); }
 
     for (auto func_iter : file_cov) {
-      const char *func_name = func_iter.first;
+      const char              *func_name = func_iter.first;
       map<const char *, bool> &func_cov = func_iter.second;
 
       const set<string> *prev_func_cov = NULL;
@@ -148,7 +125,7 @@ void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
       bool is_func_covered = false;
       for (auto bb_iter : func_cov) {
         const char *bb_name = bb_iter.first;
-        bool is_bb_covered = bb_iter.second;
+        bool        is_bb_covered = bb_iter.second;
         if (!is_bb_covered && prev_func_cov != NULL &&
             prev_func_cov->find(bb_name) != prev_func_cov->end()) {
           is_bb_covered = true;
@@ -180,17 +157,15 @@ void __cov_fini() {
     cout << "[bb_cov] Found existing coverage file, reading ...\n";
     string type;
     string name;
-    bool is_covered = false;
+    bool   is_covered = false;
     string cur_func = "";
     string line;
 
     map<string, set<string>> *cur_file_map = NULL;
-    set<string> *cur_func_map = NULL;
+    set<string>              *cur_func_map = NULL;
 
     while (getline(cov_file_in, line)) {
-      if (line.length() == 0) {
-        continue;
-      }
+      if (line.length() == 0) { continue; }
 
       auto pos1 = line.find(" ");
 
@@ -216,9 +191,7 @@ void __cov_fini() {
         continue;
       }
 
-      if (!is_covered) {
-        continue;
-      }
+      if (!is_covered) { continue; }
 
       if (type == "F") {
         if (cur_file_map == NULL) {

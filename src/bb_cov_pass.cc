@@ -4,7 +4,7 @@
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Verifier.h"
 
-llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
+llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
                                          llvm::ModuleAnalysisManager &MAM) {
   Mod_ptr = &Module;
   llvm::LLVMContext &Ctx = Module.getContext();
@@ -31,37 +31,21 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
     const string mangled_func_name = Func.getName().str();
     const string func_name = llvm::demangle(mangled_func_name);
 
-    if (Func.isIntrinsic()) {
-      continue;
-    }
+    if (Func.isIntrinsic()) { continue; }
 
-    if (func_name.find("_GLOBAL__sub_I_") != string::npos) {
-      continue;
-    }
+    if (func_name.find("_GLOBAL__sub_I_") != string::npos) { continue; }
 
-    if (func_name.find("__cxx_global_var_init") != string::npos) {
-      continue;
-    }
-
-    // if (func_name == "main") {
-    //   instrument_main(Func);
-    // }
+    if (func_name.find("__cxx_global_var_init") != string::npos) { continue; }
 
     auto subp = Func.getSubprogram();
-    if (subp == NULL) {
-      continue;
-    }
+    if (subp == NULL) { continue; }
 
     const llvm::StringRef dirname = subp->getDirectory();
-    std::string filename = subp->getFilename().str();
+    std::string           filename = subp->getFilename().str();
 
-    if (dirname != "") {
-      filename = string(dirname) + "/" + filename;
-    }
+    if (dirname != "") { filename = string(dirname) + "/" + filename; }
 
-    if (filename.find("/usr") != string::npos) {
-      continue;
-    }
+    if (filename.find("/usr") != string::npos) { continue; }
 
     // normal functions under test
     instrument_bb_cov(Func, filename);
@@ -81,9 +65,9 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
 
   delete IRB;
 
-  string out;
+  string                   out;
   llvm::raw_string_ostream output(out);
-  bool has_error = llvm::verifyModule(*Mod_ptr, &output);
+  bool                     has_error = llvm::verifyModule(*Mod_ptr, &output);
 
   if (has_error > 0) {
     llvm::errs() << "IR errors : \n";
@@ -96,6 +80,13 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
 }
 
 void BB_COV_Pass::instrument_main(llvm::Function &Func) {
+  if (Func.arg_size() != 2) {
+    llvm::errs() << "[bb_cov] bb_cov pass requires the main function to have 2 "
+                    "arguments (argc and argv).\n";
+    llvm::errs() << "[bb_cov] Coverage instrumentation may not work.\n";
+    return;
+  }
+
   auto first_inst = Func.getEntryBlock().getFirstNonPHIOrDbgOrLifetime();
   IRB->SetInsertPoint(first_inst);
 
@@ -145,7 +136,7 @@ void BB_COV_Pass::instrument_main(llvm::Function &Func) {
 }
 
 void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
-                                    const string &filename) {
+                                    const string   &filename) {
   const string mangled_func_name = Func.getName().str();
   const string func_name = llvm::demangle(mangled_func_name);
 
@@ -169,34 +160,24 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
       "__record_bb_cov", voidTy, int8PtrTy, int8PtrTy, int8PtrTy, int32Ty);
 
   for (llvm::BasicBlock &BB : Func) {
-    auto first_inst = BB.getFirstNonPHIOrDbgOrLifetime();
+    auto               first_inst = BB.getFirstNonPHIOrDbgOrLifetime();
     llvm::Instruction *first_instr =
         llvm::dyn_cast<llvm::Instruction>(first_inst);
 
-    if (llvm::isa<llvm::LandingPadInst>(first_instr)) {
-      continue;
-    }
+    if (llvm::isa<llvm::LandingPadInst>(first_instr)) { continue; }
 
     unsigned begin_line_num = -1;
     unsigned end_line_num = 0;
 
     for (llvm::Instruction &IN : BB) {
       const llvm::DebugLoc &debugInfo = IN.getDebugLoc();
-      if (!debugInfo) {
-        continue;
-      }
+      if (!debugInfo) { continue; }
 
       const unsigned line_num = debugInfo.getLine();
-      if (line_num == 0) {
-        continue;
-      }
+      if (line_num == 0) { continue; }
 
-      if (line_num < begin_line_num) {
-        begin_line_num = line_num;
-      }
-      if (line_num > end_line_num) {
-        end_line_num = line_num;
-      }
+      if (line_num < begin_line_num) { begin_line_num = line_num; }
+      if (line_num > end_line_num) { end_line_num = line_num; }
     }
 
     string BB_name = "";
@@ -226,20 +207,14 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
   // Insert cov fini
   for (llvm::BasicBlock &BB : Func) {
     for (llvm::Instruction &IN : BB) {
-      if (!llvm::isa<llvm::CallInst>(IN)) {
-        continue;
-      }
+      if (!llvm::isa<llvm::CallInst>(IN)) { continue; }
 
       llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&IN);
       llvm::Function *called_func = call_inst->getCalledFunction();
-      if (called_func == NULL) {
-        continue;
-      }
+      if (called_func == NULL) { continue; }
 
       string called_func_name = called_func->getName().str();
-      if (called_func_name != "exit") {
-        continue;
-      }
+      if (called_func_name != "exit") { continue; }
       IRB->SetInsertPoint(call_inst);
       IRB->CreateCall(cov_fini, {});
     }
@@ -250,7 +225,7 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
 void BB_COV_Pass::init_bb_map_rt() {
   llvm::LLVMContext &Ctx = Mod_ptr->getContext();
 
-  llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
+  llvm::Type       *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
   llvm::StructType *FuncBBMapTy =
       llvm::StructType::get(int8PtrTy, int8PtrPtrTy, int32Ty);
   llvm::StructType *FileFuncMapTy = llvm::StructType::get(
@@ -267,7 +242,7 @@ void BB_COV_Pass::init_bb_map_rt() {
 
     vector<llvm::Constant *> func_map_entries = {};
     for (auto &iter2 : func_map) {
-      llvm::GlobalVariable *func_name_const = iter2.first;
+      llvm::GlobalVariable        *func_name_const = iter2.first;
       set<llvm::GlobalVariable *> &bb_set = iter2.second;
 
       vector<llvm::Constant *> bb_name_entries = {};
@@ -295,7 +270,7 @@ void BB_COV_Pass::init_bb_map_rt() {
       func_map_entries.push_back(func_map_entry);
     }
 
-    const size_t func_count = func_map_entries.size();
+    const size_t     func_count = func_map_entries.size();
     llvm::ArrayType *func_map_array_ty =
         llvm::ArrayType::get(FuncBBMapTy, func_count);
     llvm::Constant *func_map_array_const =
@@ -313,7 +288,7 @@ void BB_COV_Pass::init_bb_map_rt() {
     file_map_entries.push_back(file_map_entry);
   }
 
-  const size_t file_count = file_map_entries.size();
+  const size_t     file_count = file_map_entries.size();
   llvm::ArrayType *file_map_array_ty =
       llvm::ArrayType::get(FileFuncMapTy, file_count);
   llvm::Constant *file_map_array_const =

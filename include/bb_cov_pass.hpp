@@ -25,7 +25,7 @@ using namespace std;
 
 class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
  public:
-  llvm::PreservedAnalyses run(llvm::Module &Module,
+  llvm::PreservedAnalyses run(llvm::Module                &Module,
                               llvm::ModuleAnalysisManager &MAM);
 
  private:
@@ -33,7 +33,7 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
   void instrument_bb_cov(llvm::Function &Func, const string &filename);
   void init_bb_map_rt();
 
-  llvm::Module *Mod_ptr = NULL;
+  llvm::Module      *Mod_ptr = NULL;
   llvm::IRBuilder<> *IRB = NULL;
 
   llvm::Type *voidTy;

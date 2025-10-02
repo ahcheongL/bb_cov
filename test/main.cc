@@ -1,20 +1,19 @@
-#include<stdio.h>
+#include <stdio.h>
 
-void foo(int * a) {
-    *a = 20;
-    return;
+void foo(int *a) {
+  *a = 20;
+  return;
 }
 
+int main(int argc, char *argv[]) {
+  int a = 30;
+  int b = 0;
 
-int main() {
-   int a = 30;
-   int b = 0;
+  for (a = 0; a < 20; a++) {
+    b += a;
+  }
 
-    for (a = 0 ; a < 20 ; a++) {
-        b += a;
-    }
+  foo(&a);
 
-    foo(&a);
-
-    return 0;
+  return 0;
 }
