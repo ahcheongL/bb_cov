@@ -1,4 +1,4 @@
-#include "hash.hpp"
+#include "utils/hash.hpp"
 
 unsigned char simple_hash(const char *str) {
   if (str == NULL) { return 0; }

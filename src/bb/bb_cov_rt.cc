@@ -1,4 +1,4 @@
-#include "bb_cov_rt.hpp"
+#include "bb/bb_cov_rt.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "hash.hpp"
+#include "utils/hash.hpp"
 
 static const char *cov_output_fn = NULL;
 

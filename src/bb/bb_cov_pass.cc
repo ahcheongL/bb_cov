@@ -1,9 +1,9 @@
 
-#include "bb_cov_pass.hpp"
+#include "bb/bb_cov_pass.hpp"
 
-#include "hash.hpp"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Verifier.h"
+#include "utils/hash.hpp"
 
 llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
                                          llvm::ModuleAnalysisManager &MAM) {
@@ -14,7 +14,6 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
   voidTy = llvm::Type::getVoidTy(Ctx);
   int8Ty = llvm::Type::getInt8Ty(Ctx);
   int32Ty = llvm::Type::getInt32Ty(Ctx);
-  int64Ty = llvm::Type::getInt64Ty(Ctx);
   int8PtrTy = llvm::PointerType::get(int8Ty, 0);
   int32PtrTy = llvm::PointerType::get(int32Ty, 0);
 
@@ -182,7 +181,11 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
       BB_name = to_string(begin_line_num) + ":" + to_string(end_line_num);
 
       if (bb_name_count.find(BB_name) != bb_name_count.end()) {
-        BB_name = BB_name + "_" + to_string(bb_name_count[BB_name]++);
+        int index = bb_name_count[BB_name];
+        bb_name_count[BB_name] = index + 1;
+        BB_name = BB_name + "_" + to_string(index);
+      } else {
+        bb_name_count[BB_name] = 1;
       }
     }
 

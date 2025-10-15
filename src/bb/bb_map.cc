@@ -1,8 +1,8 @@
-#include "pass_bb_map.hpp"
+#include "bb/bb_map.hpp"
 
 #include <string.h>
 
-#include "hash.hpp"
+#include "utils/hash.hpp"
 
 GFuncEntry *insert_FileFuncEntry(GFileEntry          **file_map,
                                  const std::string    &filename,

@@ -1,6 +1,7 @@
 #include <stdio.h>
 
-void foo(int *a) {
+void f1(int *a) {
+  if (a == NULL) { return; }
   *a = 20;
   return;
 }
@@ -13,7 +14,6 @@ int main(int argc, char *argv[]) {
     b += a;
   }
 
-  foo(&a);
-
+  f1(&a);
   return 0;
 }
