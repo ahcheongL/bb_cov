@@ -4,29 +4,37 @@
 
 using namespace std;
 
-struct FuncBBMap {
-  const char        *func_name;
-  const char       **bb_names;
-  const unsigned int size;
+struct CBBEntry {
+  const char      *bb_name;
+  struct CBBEntry *next;
+  char             is_covered;
 };
 
-struct FileFuncMap {
+struct CFuncEntry {
+  struct CBBEntry   *bbs[sizeof(unsigned char) * 256];
+  const char        *func_name;
+  struct CFuncEntry *next;
+};
+
+struct CFileEntry {
+  struct CFuncEntry *funcs[sizeof(unsigned char) * 256];
   const char        *filename;
-  struct FuncBBMap  *entries;
-  const unsigned int size;
+  struct CFileEntry *next;
 };
 
 extern "C" {
 
 // entire bb list generated at compile time
-extern struct FileFuncMap __bb_map[];
-extern unsigned int       __bb_map_size;
-extern unsigned int       __num_bbs;
+// We use simple hashmap for fast lookup
+// The size of the map is 256 (size of unsigned char in binary).
+extern struct CFileEntry *__file_func_map[sizeof(unsigned char) * 256];
+
+extern const unsigned int __num_bbs;
 
 void __get_output_fn(int *argc_ptr, char ***argv_ptr);
 void __record_bb_cov(const char *file_name, const char *func_name,
                      const char *bb_name, const unsigned int bb_id);
 
-void __write_cov(const map<string, map<string, set<string>>> &prev_cov);
-void __cov_fini();
+static void __write_cov(const map<string, map<string, set<string>>> &prev_cov);
+void        __cov_fini();
 }

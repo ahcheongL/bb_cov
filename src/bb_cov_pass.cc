@@ -1,6 +1,7 @@
 
 #include "bb_cov_pass.hpp"
 
+#include "hash.hpp"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Verifier.h"
 
@@ -8,6 +9,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
                                          llvm::ModuleAnalysisManager &MAM) {
   Mod_ptr = &Module;
   llvm::LLVMContext &Ctx = Module.getContext();
+  Ctxt_ptr = &Ctx;
 
   voidTy = llvm::Type::getVoidTy(Ctx);
   int8Ty = llvm::Type::getInt8Ty(Ctx);
@@ -64,6 +66,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
                << " functions.\n";
 
   delete IRB;
+  free_bb_map(file_bb_map);
 
   string                   out;
   llvm::raw_string_ostream output(out);
@@ -143,16 +146,8 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
   llvm::GlobalVariable *filename_const = gen_new_string_constant(filename);
   llvm::GlobalVariable *func_name_const = gen_new_string_constant(func_name);
 
-  map<llvm::GlobalVariable *, set<llvm::GlobalVariable *>> &func_map =
-      file_bb_map
-          .try_emplace(
-              filename_const,
-              map<llvm::GlobalVariable *, set<llvm::GlobalVariable *>>())
-          .first->second;
-
-  set<llvm::GlobalVariable *> &bb_set =
-      func_map.try_emplace(func_name_const, set<llvm::GlobalVariable *>())
-          .first->second;
+  GFuncEntry *func_entry = insert_FileFuncEntry(
+      file_bb_map, filename, filename_const, func_name, func_name_const);
 
   map<string, int> bb_name_count = {};
 
@@ -197,7 +192,7 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
                                 llvm::ConstantInt::get(int32Ty, bb_id)});
     bb_id++;
 
-    bb_set.insert(bb_name_const);
+    insert_BBEntry(func_entry, BB_name, bb_name_const);
   }
 
   llvm::FunctionCallee cov_fini =
@@ -221,85 +216,182 @@ void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
   return;
 }
 
-void BB_COV_Pass::init_bb_map_rt() {
-  llvm::LLVMContext &Ctx = Mod_ptr->getContext();
+llvm::GlobalVariable *BB_COV_Pass::gen_cfile_entry(GFileEntry *file_entry) {
+  const int          hash_map_size = sizeof(unsigned char) * 256;
+  llvm::PointerType *cfileEntryPtrTy = llvm::PointerType::get(cfileEntryTy, 0);
+  llvm::Constant    *cfileEntry_null =
+      llvm::ConstantPointerNull::get(cfileEntryPtrTy);
 
-  llvm::Type       *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
-  llvm::StructType *FuncBBMapTy =
-      llvm::StructType::get(int8PtrTy, int8PtrPtrTy, int32Ty);
-  llvm::StructType *FileFuncMapTy = llvm::StructType::get(
-      int8PtrTy, llvm::PointerType::get(FuncBBMapTy, 0), int32Ty);
+  llvm::PointerType *cfuncEntryPtrTy = llvm::PointerType::get(cfuncEntryTy, 0);
+  llvm::Constant    *cfuncEntry_null =
+      llvm::ConstantPointerNull::get(cfuncEntryPtrTy);
 
-  llvm::Constant *zero = llvm::ConstantInt::get(int32Ty, 0);
-  llvm::SmallVector<llvm::Constant *, 2> zero_indices = {zero, zero};
+  llvm::ArrayType *cfuncEntryPtrArrayTy =
+      llvm::ArrayType::get(cfuncEntryPtrTy, hash_map_size);
 
-  vector<llvm::Constant *> file_map_entries = {};
-  for (auto &iter1 : file_bb_map) {
-    llvm::GlobalVariable *filename_const = iter1.first;
-    map<llvm::GlobalVariable *, set<llvm::GlobalVariable *>> &func_map =
-        iter1.second;
-
-    vector<llvm::Constant *> func_map_entries = {};
-    for (auto &iter2 : func_map) {
-      llvm::GlobalVariable        *func_name_const = iter2.first;
-      set<llvm::GlobalVariable *> &bb_set = iter2.second;
-
-      vector<llvm::Constant *> bb_name_entries = {};
-      for (auto bb_name_const : bb_set) {
-        bb_name_entries.push_back(bb_name_const);
-      }
-
-      const size_t bb_count = bb_name_entries.size();
-
-      llvm::ArrayType *bb_name_array_ty =
-          llvm::ArrayType::get(int8PtrTy, bb_count);
-      llvm::Constant *bb_name_array_const =
-          llvm::ConstantArray::get(bb_name_array_ty, bb_name_entries);
-
-      llvm::GlobalVariable *bb_name_array_global = new llvm::GlobalVariable(
-          *Mod_ptr, bb_name_array_ty, true, llvm::GlobalValue::PrivateLinkage,
-          bb_name_array_const);
-
-      llvm::Constant *func_map_entry = llvm::ConstantStruct::get(
-          FuncBBMapTy, {func_name_const,
-                        llvm::ConstantExpr::getPointerCast(bb_name_array_global,
-                                                           int8PtrPtrTy),
-                        llvm::ConstantInt::get(int32Ty, bb_count)});
-
-      func_map_entries.push_back(func_map_entry);
-    }
-
-    const size_t     func_count = func_map_entries.size();
-    llvm::ArrayType *func_map_array_ty =
-        llvm::ArrayType::get(FuncBBMapTy, func_count);
-    llvm::Constant *func_map_array_const =
-        llvm::ConstantArray::get(func_map_array_ty, func_map_entries);
-    llvm::GlobalVariable *func_map_array_global = new llvm::GlobalVariable(
-        *Mod_ptr, func_map_array_ty, true, llvm::GlobalValue::PrivateLinkage,
-        func_map_array_const);
-
-    llvm::Constant *file_map_entry = llvm::ConstantStruct::get(
-        FileFuncMapTy,
-        {filename_const,
-         llvm::ConstantExpr::getPointerCast(
-             func_map_array_global, llvm::PointerType::get(FuncBBMapTy, 0)),
-         llvm::ConstantInt::get(int32Ty, func_count)});
-    file_map_entries.push_back(file_map_entry);
+  vector<GFileEntry *> cur_file_entries = {};
+  while (file_entry != NULL) {
+    cur_file_entries.push_back(file_entry);
+    file_entry = file_entry->next;
   }
 
-  const size_t     file_count = file_map_entries.size();
-  llvm::ArrayType *file_map_array_ty =
-      llvm::ArrayType::get(FileFuncMapTy, file_count);
-  llvm::Constant *file_map_array_const =
-      llvm::ConstantArray::get(file_map_array_ty, file_map_entries);
+  reverse(cur_file_entries.begin(), cur_file_entries.end());
 
-  llvm::GlobalVariable *bb_map_global = new llvm::GlobalVariable(
-      *Mod_ptr, file_map_array_ty, true, llvm::GlobalValue::ExternalLinkage,
-      file_map_array_const, "__bb_map");
+  llvm::GlobalVariable *prev_file_entry = NULL;
+  for (GFileEntry *file_entry : cur_file_entries) {
+    vector<llvm::Constant *> cfunc_entries = {};
 
-  llvm::GlobalVariable *bb_map_size_global = new llvm::GlobalVariable(
-      *Mod_ptr, int32Ty, true, llvm::GlobalValue::ExternalLinkage,
-      llvm::ConstantInt::get(int32Ty, file_count), "__bb_map_size");
+    for (size_t func_idx = 0; func_idx < hash_map_size; func_idx++) {
+      GFuncEntry *func_entry = file_entry->funcs[func_idx];
+      if (func_entry == NULL) {
+        cfunc_entries.push_back(cfuncEntry_null);
+        continue;
+      }
+      llvm::GlobalVariable *new_cfunc_entry = gen_cfunc_entry(func_entry);
+      cfunc_entries.push_back(new_cfunc_entry);
+    }
+
+    llvm::Constant *cfuncs_val =
+        llvm::ConstantArray::get(cfuncEntryPtrArrayTy, cfunc_entries);
+
+    llvm::Constant *prev_val = cfileEntry_null;
+    if (prev_file_entry != NULL) { prev_val = prev_file_entry; }
+
+    llvm::Constant *new_cfile_val = llvm::ConstantStruct::get(
+        cfileEntryTy, {cfuncs_val, file_entry->file_gvar, prev_val});
+
+    llvm::GlobalVariable *new_cfile_entry = new llvm::GlobalVariable(
+        *Mod_ptr, cfileEntryTy, false, llvm::GlobalValue::PrivateLinkage,
+        new_cfile_val);
+    prev_file_entry = new_cfile_entry;
+  }
+  return prev_file_entry;
+}
+
+llvm::GlobalVariable *BB_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
+  const int hash_map_size = sizeof(unsigned char) * 256;
+
+  llvm::PointerType *cfuncEntryPtrTy = llvm::PointerType::get(cfuncEntryTy, 0);
+  llvm::Constant    *cfuncEntry_null =
+      llvm::ConstantPointerNull::get(cfuncEntryPtrTy);
+
+  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
+  llvm::Constant *cbbEntry_null = llvm::ConstantPointerNull::get(cbbEntryPtrTy);
+
+  llvm::ArrayType *cbbEntryPtrArrayTy =
+      llvm::ArrayType::get(cbbEntryPtrTy, hash_map_size);
+
+  vector<GFuncEntry *> cur_func_entries = {};
+  while (func_entry != NULL) {
+    cur_func_entries.push_back(func_entry);
+    func_entry = func_entry->next;
+  }
+  reverse(cur_func_entries.begin(), cur_func_entries.end());
+
+  llvm::GlobalVariable *prev_func_entry = NULL;
+  for (GFuncEntry *func_entry : cur_func_entries) {
+    vector<llvm::Constant *> cbb_entries = {};
+    for (size_t bb_idx = 0; bb_idx < hash_map_size; bb_idx++) {
+      GBBEntry *bb_entry = func_entry->bbs[bb_idx];
+      if (bb_entry == NULL) {
+        cbb_entries.push_back(cbbEntry_null);
+        continue;
+      }
+      llvm::GlobalVariable *new_cbb_entry = gen_cbb_entry(bb_entry);
+      cbb_entries.push_back(new_cbb_entry);
+    }
+
+    llvm::Constant *cbb_val =
+        llvm::ConstantArray::get(cbbEntryPtrArrayTy, cbb_entries);
+
+    llvm::Constant *prev_val = cfuncEntry_null;
+    if (prev_func_entry != NULL) { prev_val = prev_func_entry; }
+    llvm::Constant *new_cfunc_val = llvm::ConstantStruct::get(
+        cfuncEntryTy, {cbb_val, func_entry->func_gvar, prev_val});
+    llvm::GlobalVariable *new_cfunc_entry = new llvm::GlobalVariable(
+        *Mod_ptr, cfuncEntryTy, false, llvm::GlobalValue::PrivateLinkage,
+        new_cfunc_val);
+    prev_func_entry = new_cfunc_entry;
+  }
+
+  return prev_func_entry;
+}
+
+llvm::GlobalVariable *BB_COV_Pass::gen_cbb_entry(GBBEntry *bb_entry) {
+  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
+  llvm::Constant *cbbEntry_null = llvm::ConstantPointerNull::get(cbbEntryPtrTy);
+  llvm::Constant *zero_val = llvm::ConstantInt::get(int8Ty, 0);
+
+  vector<GBBEntry *> cur_bb_entries = {};
+  while (bb_entry != NULL) {
+    cur_bb_entries.push_back(bb_entry);
+    bb_entry = bb_entry->next;
+  }
+
+  reverse(cur_bb_entries.begin(), cur_bb_entries.end());
+  llvm::GlobalVariable *prev_bb_entry = NULL;
+  for (GBBEntry *bb_entry : cur_bb_entries) {
+    llvm::Constant *prev_val = cbbEntry_null;
+    if (prev_bb_entry != NULL) { prev_val = prev_bb_entry; }
+    llvm::Constant *new_cbb_val = llvm::ConstantStruct::get(
+        cbbEntryTy, {bb_entry->bb_gvar, prev_val, zero_val});
+    llvm::GlobalVariable *new_cbb_entry = new llvm::GlobalVariable(
+        *Mod_ptr, cbbEntryTy, false, llvm::GlobalValue::PrivateLinkage,
+        new_cbb_val);
+    prev_bb_entry = new_cbb_entry;
+  }
+
+  return prev_bb_entry;
+}
+
+void BB_COV_Pass::init_bb_map_rt() {
+  llvm::LLVMContext &Ctx = *Ctxt_ptr;
+
+  llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
+
+  const int hash_map_size = sizeof(unsigned char) * 256;
+
+  cbbEntryTy = llvm::StructType::create(Ctx, "struct.CBBEntry");
+  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
+
+  cbbEntryTy->setBody({int8PtrTy, cbbEntryPtrTy, int8Ty});
+
+  cfuncEntryTy = llvm::StructType::create(Ctx, "struct.CFuncEntry");
+  llvm::PointerType *cfuncEntryPtrTy = llvm::PointerType::get(cfuncEntryTy, 0);
+
+  cfuncEntryTy->setBody({llvm::ArrayType::get(cbbEntryPtrTy, hash_map_size),
+                         int8PtrTy, cfuncEntryPtrTy});
+
+  cfileEntryTy = llvm::StructType::create(Ctx, "struct.CFileEntry");
+  llvm::PointerType *cfileEntryPtrTy = llvm::PointerType::get(cfileEntryTy, 0);
+
+  cfileEntryTy->setBody({llvm::ArrayType::get(cfuncEntryPtrTy, hash_map_size),
+                         int8PtrTy, cfileEntryPtrTy});
+
+  llvm::Constant *null_cfile_entry =
+      llvm::ConstantPointerNull::get(cfileEntryPtrTy);
+
+  vector<llvm::Constant *> file_map_entries = {};
+
+  for (size_t file_idx = 0; file_idx < hash_map_size; file_idx++) {
+    GFileEntry *file_entry = file_bb_map[file_idx];
+    if (file_entry == NULL) {
+      file_map_entries.push_back(null_cfile_entry);
+      continue;
+    }
+
+    llvm::GlobalVariable *new_cfile_entry = gen_cfile_entry(file_entry);
+    file_map_entries.push_back(new_cfile_entry);
+  }
+
+  llvm::ArrayType *cfileptr_array_ty =
+      llvm::ArrayType::get(cfileEntryPtrTy, hash_map_size);
+  llvm::Constant *cfileptr_arr_val =
+      llvm::ConstantArray::get(cfileptr_array_ty, file_map_entries);
+
+  llvm::GlobalVariable *__file_func_map_global = new llvm::GlobalVariable(
+      *Mod_ptr, cfileptr_array_ty, false, llvm::GlobalValue::ExternalLinkage,
+      cfileptr_arr_val, "__file_func_map");
 
   return;
 }

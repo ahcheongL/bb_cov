@@ -6,7 +6,7 @@ clang -g -c -emit-llvm main.cc -o main.bc
 
 opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov < main.bc -o out.bc
 clang++ out.bc -o out.cov -L../build -l:bb_cov_rt.a 
-./out.cov main.cc.cov
+time ./out.cov main.cc.cov
 
 echo ""
 echo "Coverage result:"

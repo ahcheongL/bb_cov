@@ -20,6 +20,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
+#include "pass_bb_map.hpp"
 
 using namespace std;
 
@@ -34,6 +35,7 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
   void init_bb_map_rt();
 
   llvm::Module      *Mod_ptr = NULL;
+  llvm::LLVMContext *Ctxt_ptr = NULL;
   llvm::IRBuilder<> *IRB = NULL;
 
   llvm::Type *voidTy;
@@ -43,13 +45,19 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
   llvm::Type *int8PtrTy;
   llvm::Type *int32PtrTy;
 
+  llvm::StructType *cfileEntryTy = NULL;
+  llvm::StructType *cfuncEntryTy = NULL;
+  llvm::StructType *cbbEntryTy = NULL;
+
   unsigned int bb_id = 0;
 
   // Entire basic block map
   // file -> func -> set(bb)
-  map<llvm::GlobalVariable *,
-      map<llvm::GlobalVariable *, set<llvm::GlobalVariable *>>>
-      file_bb_map;
+  struct GFileEntry *file_bb_map[sizeof(unsigned char) * 256]{};
+
+  llvm::GlobalVariable *gen_cfile_entry(GFileEntry *file_entry);
+  llvm::GlobalVariable *gen_cfunc_entry(GFuncEntry *func_entry);
+  llvm::GlobalVariable *gen_cbb_entry(GBBEntry *bb_entry);
 
   map<string, llvm::GlobalVariable *> new_string_globals = {};
   llvm::GlobalVariable *gen_new_string_constant(const string &name);

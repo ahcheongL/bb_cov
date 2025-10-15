@@ -8,14 +8,12 @@
 #include <iostream>
 #include <sstream>
 
+#include "hash.hpp"
+
 static const char *cov_output_fn = NULL;
 
 // Used for fast check of covered basic blocks
 static char *bb_cov_arr = NULL;
-
-// coverage collected at runtime
-static map<const char *, map<const char *, map<const char *, bool>>>
-    __replay_coverage_info;
 
 extern "C" {
 
@@ -43,33 +41,6 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
     exit(1);
   }
   memset(bb_cov_arr, 0, __num_bbs);
-
-  // read __bb_map to initialize __replay_coverage_info
-  unsigned int file_idx = 0;
-  for (; file_idx < __bb_map_size; file_idx++) {
-    struct FileFuncMap                         &file_map = __bb_map[file_idx];
-    const char                                 *filename = file_map.filename;
-    map<const char *, map<const char *, bool>> &func_map =
-        __replay_coverage_info
-            .try_emplace(filename, map<const char *, map<const char *, bool>>())
-            .first->second;
-
-    unsigned int func_idx = 0;
-    for (; func_idx < file_map.size; func_idx++) {
-      struct FuncBBMap        &func_map_entry = file_map.entries[func_idx];
-      const char              *func_name = func_map_entry.func_name;
-      map<const char *, bool> &bb_map =
-          func_map.try_emplace(func_name, map<const char *, bool>())
-              .first->second;
-
-      unsigned int bb_idx = 0;
-      for (; bb_idx < func_map_entry.size; bb_idx++) {
-        const char *bb_name = func_map_entry.bb_names[bb_idx];
-        bb_map.try_emplace(bb_name, false);
-      }
-    }
-  }
-
   return;
 }
 
@@ -79,14 +50,34 @@ void __record_bb_cov(const char *file_name, const char *func_name,
 
   bb_cov_arr[bb_id] = 1;
 
-  auto file_cov = __replay_coverage_info.find(file_name);
-  auto func_cov = file_cov->second.find(func_name);
-  auto bb_cov = func_cov->second.find(bb_name);
-  bb_cov->second = true;
+  unsigned char file_hash = simple_hash(file_name);
+  unsigned char func_hash = simple_hash(func_name);
+  unsigned char bb_hash = simple_hash(bb_name);
+
+  CFileEntry *file_entry = __file_func_map[file_hash];
+  // skip null checks for speed, entry pointers should not be null
+
+  while (file_entry != NULL) {
+    if (file_entry->filename == file_name) { break; }
+    file_entry = file_entry->next;
+  }
+
+  CFuncEntry *func_entry = file_entry->funcs[func_hash];
+  while (func_entry != NULL) {
+    if (func_entry->func_name == func_name) { break; }
+    func_entry = func_entry->next;
+  }
+
+  CBBEntry *bb_entry = func_entry->bbs[bb_hash];
+  while (bb_entry != NULL) {
+    if (bb_entry->bb_name == bb_name) { break; }
+    bb_entry = bb_entry->next;
+  }
+  bb_entry->is_covered = 1;
   return;
 }
 
-void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
+static void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
   if (cov_output_fn == NULL) {
     cerr << "[bb_cov] No coverage information collected." << endl;
     return;
@@ -98,47 +89,63 @@ void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
     return;
   }
 
-  for (auto file_iter : __replay_coverage_info) {
-    const char *file_name = file_iter.first;
-    cov_file_out << "File " << file_name << "\n";
+  const int hash_map_size = sizeof(unsigned char) * 256;
+  for (size_t file_idx = 0; file_idx < hash_map_size; file_idx++) {
+    CFileEntry *file_entry = __file_func_map[file_idx];
+    while (file_entry != NULL) {
+      const char *file_name = file_entry->filename;
+      cov_file_out << "File " << file_name << "\n";
 
-    map<const char *, map<const char *, bool>> &file_cov = file_iter.second;
-    // merge with previous coverage info
-    const map<string, set<string>> *prev_file_cov = NULL;
-    auto                            search = prev_cov.find(file_name);
-    if (search != prev_cov.end()) { prev_file_cov = &(search->second); }
+      // to merge with previous coverage info, fetch previous coverage
+      const map<string, set<string>> *prev_file_cov = NULL;
+      auto                            search = prev_cov.find(file_name);
+      if (search != prev_cov.end()) { prev_file_cov = &(search->second); }
 
-    for (auto func_iter : file_cov) {
-      const char              *func_name = func_iter.first;
-      map<const char *, bool> &func_cov = func_iter.second;
+      for (size_t func_idx = 0; func_idx < hash_map_size; func_idx++) {
+        CFuncEntry *func_entry = file_entry->funcs[func_idx];
+        while (func_entry != NULL) {
+          const char *func_name = func_entry->func_name;
+          cov_file_out << "F " << func_name << " ";
 
-      const set<string> *prev_func_cov = NULL;
-      if (prev_file_cov != NULL) {
-        auto search2 = prev_file_cov->find(func_name);
-        if (search2 != prev_file_cov->end()) {
-          prev_func_cov = &(search2->second);
+          // merge with previous coverage info
+          const set<string> *prev_func_cov = NULL;
+          if (prev_file_cov != NULL) {
+            auto search2 = prev_file_cov->find(func_name);
+            if (search2 != prev_file_cov->end()) {
+              prev_func_cov = &(search2->second);
+            }
+          }
+
+          stringstream bb_ss;
+
+          bool is_func_covered = false;
+          for (size_t bb_idx = 0; bb_idx < hash_map_size; bb_idx++) {
+            CBBEntry *bb_entry = func_entry->bbs[bb_idx];
+            while (bb_entry != NULL) {
+              const char *bb_name = bb_entry->bb_name;
+              bool        is_bb_covered = (bb_entry->is_covered != 0);
+              if (!is_bb_covered && prev_func_cov != NULL &&
+                  prev_func_cov->find(bb_name) != prev_func_cov->end()) {
+                is_bb_covered = true;
+              }
+              is_func_covered = is_func_covered || is_bb_covered;
+
+              bb_ss << "B " << bb_name << " " << (is_bb_covered ? "1" : "0")
+                    << "\n";
+
+              bb_entry = bb_entry->next;
+            }
+          }
+
+          cov_file_out << (is_func_covered ? "1" : "0") << "\n";
+
+          cov_file_out << bb_ss.str();
+
+          func_entry = func_entry->next;
         }
       }
 
-      stringstream bb_ss;
-
-      bool is_func_covered = false;
-      for (auto bb_iter : func_cov) {
-        const char *bb_name = bb_iter.first;
-        bool        is_bb_covered = bb_iter.second;
-        if (!is_bb_covered && prev_func_cov != NULL &&
-            prev_func_cov->find(bb_name) != prev_func_cov->end()) {
-          is_bb_covered = true;
-        }
-        is_func_covered = is_func_covered || is_bb_covered;
-
-        bb_ss << "B " << bb_name << " " << (is_bb_covered ? "1" : "0") << "\n";
-      }
-
-      cov_file_out << "F " << func_name << " " << (is_func_covered ? "1" : "0")
-                   << "\n";
-
-      cov_file_out << bb_ss.str();
+      file_entry = file_entry->next;
     }
   }
 

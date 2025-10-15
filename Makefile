@@ -27,12 +27,21 @@ all: bb_cov
 
 bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a
 
-build/bb_cov_pass.so: src/bb_cov_pass.cc include/bb_cov_pass.hpp
-	$(CXX) $(CXXFLAGS) -I include -shared $< -o $@
+build/hash.o: src/hash.cc include/hash.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
 
-build/bb_cov_rt.a: src/bb_cov_rt.cc include/bb_cov_rt.hpp
+build/pass_bb_map.o: src/pass_bb_map.cc include/pass_bb_map.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
+build/bb_cov_pass.o: src/bb_cov_pass.cc include/bb_cov_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
+build/bb_cov_pass.so: build/bb_cov_pass.o build/hash.o build/pass_bb_map.o
+	$(CXX) $(CXXFLAGS) -I include -shared -o $@ $^
+
+build/bb_cov_rt.a: src/bb_cov_rt.cc include/bb_cov_rt.hpp build/hash.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_rt.o
-	$(AR) rsv $@ build/bb_cov_rt.o
+	$(AR) rsv $@ build/bb_cov_rt.o build/hash.o
 
 clean:
 	rm -rf build/*
