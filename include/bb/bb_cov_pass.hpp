@@ -29,9 +29,11 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
                               llvm::ModuleAnalysisManager &MAM);
 
  private:
-  void instrument_main(llvm::Function &Func);
-  void instrument_bb_cov(llvm::Function &Func, const string &filename);
+  void     instrument_main(llvm::Function &Func);
+  uint32_t insert_bb_probes();
+  void insert_bb_probe_one_func(llvm::Function &Func, const string &filename);
   void init_bb_map_rt();
+  set<llvm::Function *> get_dtor_funcs();
 
   llvm::Module      *Mod_ptr = NULL;
   llvm::LLVMContext *Ctxt_ptr = NULL;

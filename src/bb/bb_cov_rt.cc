@@ -10,10 +10,10 @@
 
 #include "utils/hash.hpp"
 
-static const char *cov_output_fn = NULL;
+static const char *cov_output_fn = nullptr;
 
 // Used for fast check of covered basic blocks
-static char *bb_cov_arr = NULL;
+static char *bb_cov_arr = nullptr;
 
 extern "C" {
 
@@ -29,14 +29,14 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
   }
 
   cov_output_fn = (*argv_ptr)[argc];
-  (*argv_ptr)[argc] = NULL;
+  (*argv_ptr)[argc] = nullptr;
 
   cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track." << endl;
   cout << "[bb_cov] Coverage output file: " << cov_output_fn << endl;
 
   // Initialize bb_cov_arr
   bb_cov_arr = (char *)malloc(__num_bbs);
-  if (bb_cov_arr == NULL) {
+  if (bb_cov_arr == nullptr) {
     cerr << "[bb_cov] Failed to allocate memory for coverage array." << endl;
     exit(1);
   }
@@ -45,31 +45,32 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
 }
 
 void __record_bb_cov(const char *file_name, const char *func_name,
-                     const char *bb_name, const unsigned int bb_id) {
+                     const char *bb_name, const u_int32_t bb_id) {
+  if (bb_cov_arr == nullptr) { return; }
   if (bb_cov_arr[bb_id] == 1) { return; }
 
   bb_cov_arr[bb_id] = 1;
 
-  unsigned char file_hash = simple_hash(file_name);
-  unsigned char func_hash = simple_hash(func_name);
-  unsigned char bb_hash = simple_hash(bb_name);
+  u_int8_t file_hash = simple_hash(file_name);
+  u_int8_t func_hash = simple_hash(func_name);
+  u_int8_t bb_hash = simple_hash(bb_name);
 
   CFileEntry *file_entry = __file_func_map[file_hash];
-  // skip null checks for speed, entry pointers should not be null
+  // skip nullptr checks for speed, entry pointers should not be nullptr
 
-  while (file_entry != NULL) {
+  while (file_entry != nullptr) {
     if (file_entry->filename == file_name) { break; }
     file_entry = file_entry->next;
   }
 
   CFuncEntry *func_entry = file_entry->funcs[func_hash];
-  while (func_entry != NULL) {
+  while (func_entry != nullptr) {
     if (func_entry->func_name == func_name) { break; }
     func_entry = func_entry->next;
   }
 
   CBBEntry *bb_entry = func_entry->bbs[bb_hash];
-  while (bb_entry != NULL) {
+  while (bb_entry != nullptr) {
     if (bb_entry->bb_name == bb_name) { break; }
     bb_entry = bb_entry->next;
   }
@@ -78,7 +79,7 @@ void __record_bb_cov(const char *file_name, const char *func_name,
 }
 
 static void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
-  if (cov_output_fn == NULL) {
+  if (cov_output_fn == nullptr) {
     cerr << "[bb_cov] No coverage information collected." << endl;
     return;
   }
@@ -89,27 +90,27 @@ static void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
     return;
   }
 
-  const int hash_map_size = sizeof(unsigned char) * 256;
+  const int hash_map_size = sizeof(u_int8_t) * 256;
   for (size_t file_idx = 0; file_idx < hash_map_size; file_idx++) {
     CFileEntry *file_entry = __file_func_map[file_idx];
-    while (file_entry != NULL) {
+    while (file_entry != nullptr) {
       const char *file_name = file_entry->filename;
       cov_file_out << "File " << file_name << "\n";
 
       // to merge with previous coverage info, fetch previous coverage
-      const map<string, set<string>> *prev_file_cov = NULL;
+      const map<string, set<string>> *prev_file_cov = nullptr;
       auto                            search = prev_cov.find(file_name);
       if (search != prev_cov.end()) { prev_file_cov = &(search->second); }
 
       for (size_t func_idx = 0; func_idx < hash_map_size; func_idx++) {
         CFuncEntry *func_entry = file_entry->funcs[func_idx];
-        while (func_entry != NULL) {
+        while (func_entry != nullptr) {
           const char *func_name = func_entry->func_name;
           cov_file_out << "F " << func_name << " ";
 
           // merge with previous coverage info
-          const set<string> *prev_func_cov = NULL;
-          if (prev_file_cov != NULL) {
+          const set<string> *prev_func_cov = nullptr;
+          if (prev_file_cov != nullptr) {
             auto search2 = prev_file_cov->find(func_name);
             if (search2 != prev_file_cov->end()) {
               prev_func_cov = &(search2->second);
@@ -121,10 +122,10 @@ static void __write_cov(const map<string, map<string, set<string>>> &prev_cov) {
           bool is_func_covered = false;
           for (size_t bb_idx = 0; bb_idx < hash_map_size; bb_idx++) {
             CBBEntry *bb_entry = func_entry->bbs[bb_idx];
-            while (bb_entry != NULL) {
+            while (bb_entry != nullptr) {
               const char *bb_name = bb_entry->bb_name;
               bool        is_bb_covered = (bb_entry->is_covered != 0);
-              if (!is_bb_covered && prev_func_cov != NULL &&
+              if (!is_bb_covered && prev_func_cov != nullptr &&
                   prev_func_cov->find(bb_name) != prev_func_cov->end()) {
                 is_bb_covered = true;
               }
@@ -168,8 +169,8 @@ void __cov_fini() {
     string cur_func = "";
     string line;
 
-    map<string, set<string>> *cur_file_map = NULL;
-    set<string>              *cur_func_map = NULL;
+    map<string, set<string>> *cur_file_map = nullptr;
+    set<string>              *cur_func_map = nullptr;
 
     while (getline(cov_file_in, line)) {
       if (line.length() == 0) { continue; }
@@ -201,7 +202,7 @@ void __cov_fini() {
       if (!is_covered) { continue; }
 
       if (type == "F") {
-        if (cur_file_map == NULL) {
+        if (cur_file_map == nullptr) {
           found_error = true;
           continue;
         }
@@ -211,7 +212,7 @@ void __cov_fini() {
         continue;
       }
 
-      if (cur_func_map == NULL) {
+      if (cur_func_map == nullptr) {
         found_error = true;
         continue;
       }
@@ -227,11 +228,16 @@ void __cov_fini() {
     }
   }
 
+  if (bb_cov_arr == nullptr) {
+    cout << "[bb_cov] No coverage information collected." << endl;
+    return;
+  }
+
   cout << "[bb_cov] Writing coverage info to files..." << endl;
   __write_cov(prev_cov);
 
   free(bb_cov_arr);
-  bb_cov_arr = NULL;
+  bb_cov_arr = nullptr;
   return;
 }
 

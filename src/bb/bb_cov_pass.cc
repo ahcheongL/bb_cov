@@ -26,32 +26,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
     return llvm::PreservedAnalyses::all();
   }
 
-  unsigned int num_instrumented_funcs = 0;
-
-  for (llvm::Function &Func : Module.functions()) {
-    const string mangled_func_name = Func.getName().str();
-    const string func_name = llvm::demangle(mangled_func_name);
-
-    if (Func.isIntrinsic()) { continue; }
-
-    if (func_name.find("_GLOBAL__sub_I_") != string::npos) { continue; }
-
-    if (func_name.find("__cxx_global_var_init") != string::npos) { continue; }
-
-    auto subp = Func.getSubprogram();
-    if (subp == NULL) { continue; }
-
-    const llvm::StringRef dirname = subp->getDirectory();
-    std::string           filename = subp->getFilename().str();
-
-    if (dirname != "") { filename = string(dirname) + "/" + filename; }
-
-    if (filename.find("/usr") != string::npos) { continue; }
-
-    // normal functions under test
-    instrument_bb_cov(Func, filename);
-    num_instrumented_funcs++;
-  }
+  uint32_t num_instrumented_funcs = insert_bb_probes();
 
   instrument_main(*main_func);
 
@@ -137,8 +112,47 @@ void BB_COV_Pass::instrument_main(llvm::Function &Func) {
   return;
 }
 
-void BB_COV_Pass::instrument_bb_cov(llvm::Function &Func,
-                                    const string   &filename) {
+uint32_t BB_COV_Pass::insert_bb_probes() {
+  uint32_t num_instrumented_funcs = 0;
+
+  set<llvm::Function *> dtor_funcs = get_dtor_funcs();
+  llvm::errs() << "Found " << dtor_funcs.size() << " dtor functions.\n";
+
+  for (llvm::Function &Func : Mod_ptr->functions()) {
+    if (dtor_funcs.find(&Func) != dtor_funcs.end()) {
+      llvm::errs() << "Skipping dtor function: " << Func.getName() << "\n";
+      continue;
+    }
+
+    const string mangled_func_name = Func.getName().str();
+    const string func_name = llvm::demangle(mangled_func_name);
+
+    if (Func.isIntrinsic()) { continue; }
+
+    if (func_name.find("_GLOBAL__sub_I_") != string::npos) { continue; }
+
+    if (func_name.find("__cxx_global_var_init") != string::npos) { continue; }
+
+    auto subp = Func.getSubprogram();
+    if (subp == NULL) { continue; }
+
+    const llvm::StringRef dirname = subp->getDirectory();
+    std::string           filename = subp->getFilename().str();
+
+    if (dirname != "") { filename = string(dirname) + "/" + filename; }
+
+    if (filename.find("/usr") != string::npos) { continue; }
+
+    // normal functions under test
+    insert_bb_probe_one_func(Func, filename);
+    num_instrumented_funcs++;
+  }
+
+  return num_instrumented_funcs;
+}
+
+void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
+                                           const string   &filename) {
   const string mangled_func_name = Func.getName().str();
   const string func_name = llvm::demangle(mangled_func_name);
 
@@ -410,6 +424,38 @@ llvm::GlobalVariable *BB_COV_Pass::gen_new_string_constant(const string &name) {
   }
 
   return search->second;
+}
+
+set<llvm::Function *> BB_COV_Pass::get_dtor_funcs() {
+  set<llvm::Function *> dtor_funcs = {};
+
+  llvm::GlobalVariable *global_dtors =
+      Mod_ptr->getGlobalVariable("llvm.global_dtors");
+
+  if (global_dtors == nullptr) { return dtor_funcs; }
+
+  // 2. get llvm.global_dtors' initializer
+  llvm::Constant *initializer = global_dtors->getInitializer();
+
+  llvm::ConstantArray *const_arr =
+      llvm::dyn_cast<llvm::ConstantArray>(initializer);
+
+  if (const_arr == nullptr) { return dtor_funcs; }
+
+  for (llvm::Use &op : const_arr->operands()) {
+    llvm::ConstantStruct *op_val = llvm::dyn_cast<llvm::ConstantStruct>(op);
+
+    if (op_val == nullptr) { continue; }
+
+    llvm::Constant *dtor_func = op_val->getOperand(1);
+
+    llvm::Function *func = llvm::dyn_cast<llvm::Function>(dtor_func);
+    if (func == nullptr) { continue; }
+
+    dtor_funcs.insert(func);
+  }
+
+  return dtor_funcs;
 }
 
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
