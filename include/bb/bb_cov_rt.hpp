@@ -31,7 +31,7 @@ extern struct CFileEntry *__file_func_map[sizeof(unsigned char) * 256];
 
 extern const unsigned int __num_bbs;
 
-void __get_output_fn(int *argc_ptr, char ***argv_ptr);
+void __handle_init(int *argc_ptr, char **argv);
 void __record_bb_cov(const char *file_name, const char *func_name,
                      const char *bb_name, const unsigned int bb_id);
 

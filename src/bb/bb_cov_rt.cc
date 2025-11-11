@@ -1,38 +1,85 @@
 #include "bb/bb_cov_rt.hpp"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 
 #include "utils/hash.hpp"
 
-static const char *cov_output_fn = nullptr;
+static char *cov_output_fn = nullptr;
 
 // Used for fast check of covered basic blocks
 static char *bb_cov_arr = nullptr;
 
+namespace fs = filesystem;
+
+#define FORKSRV_READ_FD 198
+#define FORKSRV_WRITE_FD (FORKSRV_READ_FD + 1)
+
 extern "C" {
 
-void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
-  const int argc = (*argc_ptr) - 1;
-  *argc_ptr = argc;
+void show_progress(size_t current, size_t total,
+                   chrono::steady_clock::time_point start_time) {
+  double progress = (double)current / total;
+  int    barWidth = 40;
 
-  if (argc == 0) {
-    cout << "[bb_cov] Usage : " << (*argv_ptr)[0][0]
-         << " <args ...> <cov_output_fn>\n";
-    cout << "[bb_cov] Put <cov_output_fn> as the last argument." << endl;
+  // Print progress bar
+  cout << "[";
+  int pos = barWidth * progress;
+  for (int i = 0; i < barWidth; ++i) {
+    if (i < pos)
+      cout << "=";
+    else if (i == pos)
+      cout << ">";
+    else
+      cout << " ";
+  }
+  cout << "] ";
+
+  // Print percentage
+  cout << fixed << setprecision(1) << progress * 100.0 << "% ";
+
+  // Calculate estimated remaining time
+  auto   now = chrono::steady_clock::now();
+  double elapsed = chrono::duration<double>(now - start_time).count();
+  double eta = (elapsed / progress) - elapsed;  // estimated remaining
+  if (current == 0) eta = 0;                    // avoid division by zero
+
+  cout << "ETA: " << fixed << setprecision(1) << eta << "s\r";
+  cout.flush();
+}
+
+void __handle_init(int32_t *argc_ptr, char **argv) {
+  int32_t argc = *argc_ptr;
+
+  if (argc < 2) {
+    cout << "[bb_cov] Usage : " << argv[0]
+         << " <args ...> [cov_output_fn] [inputs_dir] [cov_output_dir] \n";
+    cout << "  <args ...> : arguments for the target program\n";
+    cout << "  if @@ placeholder is NOT in <args ...>, it is considered as a "
+            "normal execution with coverage instrumentation, and generates "
+            "coverage report output file to [cov_output_fn].\n\n";
+    cout << "  if @@ placeholder is in <args ...>, it is considered as "
+            "replaying all inputs in <inputs_dir> and generating coverage "
+            "reports to [cov_output_dir].\n";
     exit(1);
   }
 
-  cov_output_fn = (*argv_ptr)[argc];
-  (*argv_ptr)[argc] = nullptr;
-
-  cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track." << endl;
-  cout << "[bb_cov] Coverage output file: " << cov_output_fn << endl;
+  u_int32_t placeholder_idx = -1;
+  for (u_int32_t idx = 1; idx <= (u_int32_t)argc; idx++) {
+    if (strncmp(argv[idx], "@@", 3) == 0) {
+      placeholder_idx = idx;
+      break;
+    }
+  }
 
   // Initialize bb_cov_arr
   bb_cov_arr = (char *)malloc(__num_bbs);
@@ -41,7 +88,95 @@ void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
     exit(1);
   }
   memset(bb_cov_arr, 0, __num_bbs);
-  return;
+
+  if (placeholder_idx == -1) {
+    // normal execution with one input file
+    int32_t new_argc = argc - 1;
+    cov_output_fn = argv[new_argc];
+    argv[new_argc] = nullptr;
+    *argc_ptr = new_argc;
+    cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track." << endl;
+    cout << "[bb_cov] Coverage output file: " << cov_output_fn << endl;
+    return;
+  }
+
+  cout << "[bb_cov] Replaying all inputs in directory mode." << endl;
+
+  *argc_ptr = argc - 2;
+  const char *inputs_dir = argv[argc - 2];
+  const char *outputs_dir = argv[argc - 1];
+  argv[argc - 2] = nullptr;
+  argv[argc - 1] = nullptr;
+
+  fs::path dir_path(inputs_dir);
+
+  if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
+    cerr << "[bb_cov] Inputs directory does not exist or is not a directory."
+         << endl;
+    exit(1);
+  }
+
+  auto           dir_iter = fs::directory_iterator(dir_path);
+  const uint32_t num_inputs = distance(dir_iter, fs::directory_iterator{});
+  cout << "Found " << num_inputs << " inputs to process." << endl;
+
+  dir_iter = fs::directory_iterator(dir_path);  // reset iterator
+
+  uint32_t input_idx = 0;
+  auto     start_time = chrono::steady_clock::now();
+
+  for (const auto &entry : dir_iter) {
+    string basename = entry.path().filename().string();
+
+    if (!entry.is_regular_file()) { continue; }
+
+    basename = entry.path().filename().string();
+    if (basename.rfind("id:", 0) != 0) {  // starts with "id:"
+      continue;
+    }
+
+    pid_t pid = fork();
+
+    if (pid < 0) {
+      cerr << "[bb_cov] Fork failed." << endl;
+      exit(1);
+    }
+
+    if (pid == 0) {
+      // child process
+
+      // devnull
+      int devnull_fd = open("/dev/null", O_RDWR);
+      dup2(devnull_fd, STDOUT_FILENO);
+      dup2(devnull_fd, STDERR_FILENO);
+      close(devnull_fd);
+
+      string input_path = entry.path().string();
+      size_t path_size = input_path.length() + 1;
+      char  *input_path_cstr = new char[path_size];
+      strncpy(input_path_cstr, input_path.c_str(), path_size);
+      argv[placeholder_idx] = input_path_cstr;  // memory leak ...
+
+      size_t pos = basename.find(',');
+      if (pos != string::npos) { basename = basename.substr(0, pos); }
+      string output_path = string(outputs_dir) + "/" + basename;
+      path_size = output_path.length() + 1;
+      cov_output_fn = new char[path_size];
+      strncpy(cov_output_fn, output_path.c_str(),
+              path_size);  // memory leak ...
+
+      return;
+    }
+
+    int32_t status = 0;
+    waitpid(pid, &status, 0);
+
+    input_idx++;
+    show_progress(input_idx, num_inputs, start_time);
+  }
+
+  cout << "[bb_cov] All " << input_idx << " inputs processed." << endl;
+  exit(0);
 }
 
 void __record_bb_cov(const char *file_name, const char *func_name,

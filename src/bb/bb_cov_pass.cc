@@ -73,26 +73,19 @@ void BB_COV_Pass::instrument_main(llvm::Function &Func) {
   llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
 
   llvm::AllocaInst *const argc_ptr = IRB->CreateAlloca(int32Ty);
-  llvm::AllocaInst *const argv_ptr = IRB->CreateAlloca(int8PtrPtrTy);
 
   llvm::Instruction *const new_argc = IRB->CreateLoad(int32Ty, argc_ptr);
-  llvm::Instruction *const new_argv = IRB->CreateLoad(int8PtrPtrTy, argv_ptr);
 
   argc->replaceAllUsesWith(new_argc);
-  argv->replaceAllUsesWith(new_argv);
 
   IRB->SetInsertPoint(new_argc);
 
   IRB->CreateStore(argc, argc_ptr);
-  IRB->CreateStore(argv, argv_ptr);
-
-  llvm::Type *int8PtrPtrPtrTy = llvm::PointerType::get(int8PtrPtrTy, 0);
 
   llvm::FunctionCallee get_output_fn = Mod_ptr->getOrInsertFunction(
-      "__get_output_fn", voidTy, int32PtrTy, int8PtrPtrPtrTy);
+      "__handle_init", voidTy, int32PtrTy, int8PtrPtrTy);
 
-  IRB->CreateCall(get_output_fn, {argc_ptr, argv_ptr});
-
+  IRB->CreateCall(get_output_fn, {argc_ptr, argv});
   set<llvm::ReturnInst *> ret_inst_set;
   for (auto &BB : Func) {
     for (auto &I : BB) {
