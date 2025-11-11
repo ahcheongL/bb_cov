@@ -26,7 +26,7 @@
 
 ## 2. Coverage instrumentation
 
-1. `opt -load-pass-plugin={$PROJECT_PATH}/build/bb_cov_pass.so -passes=bbcov < <target.bc> -o <out.bc>`
+1. `opt -load-pass-plugin {$PROJECT_PATH}/build/bb_cov_pass.so -passes=bbcov <target.bc> -o <out.bc>`
 
 2. `clang++ <out.bc> <compile flags> -o <target.cov> -L {$PROJECT_PATH}/build -l:bb_cov_rt.a`
     * `<compile flags>` are usually shared libraries that are linked to the original target executable.
