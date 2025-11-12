@@ -116,6 +116,9 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     exit(1);
   }
 
+  fs::path out_dir_path(outputs_dir);
+  if (!fs::exists(out_dir_path)) { fs::create_directory(out_dir_path); }
+
   auto           dir_iter = fs::directory_iterator(dir_path);
   const uint32_t num_inputs = distance(dir_iter, fs::directory_iterator{});
   cout << "Found " << num_inputs << " inputs to process." << endl;
