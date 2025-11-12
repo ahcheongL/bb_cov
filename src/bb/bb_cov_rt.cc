@@ -74,7 +74,7 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   }
 
   u_int32_t placeholder_idx = -1;
-  for (u_int32_t idx = 1; idx <= (u_int32_t)argc; idx++) {
+  for (u_int32_t idx = 1; idx < (u_int32_t)argc; idx++) {
     if (strncmp(argv[idx], "@@", 3) == 0) {
       placeholder_idx = idx;
       break;
