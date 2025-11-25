@@ -23,10 +23,11 @@ CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 
 LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes`
 
-all: bb_cov path_cov
+all: bb_cov path_cov func_seq
 
 bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a
 path_cov: build/path_cov_pass.so build/path_cov_rt.a
+func_seq: build/func_seq_pass.so build/func_seq_rt.a
 
 build/hash.o: src/utils/hash.cc include/utils/hash.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
@@ -53,6 +54,17 @@ build/path_cov_pass.so: build/path_cov_pass.o
 build/path_cov_rt.a: src/path/path_cov_rt.cc include/path/path_cov_rt.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/path_cov_rt.o
 	$(AR) rsv $@ build/path_cov_rt.o
+
+
+build/func_seq_pass.o: src/func/func_seq_pass.cc include/func/func_seq_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
+build/func_seq_pass.so: build/func_seq_pass.o
+	$(CXX) $(CXXFLAGS) -I include -shared -o $@ $^
+
+build/func_seq_rt.a: src/func/func_seq_rt.cc include/func/func_seq_rt.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o build/func_seq_rt.o
+	$(AR) rsv $@ build/func_seq_rt.o
 
 clean:
 	rm -rf build/*

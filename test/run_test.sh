@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e 
 
-rm -f out bbout.bc main.cc.cov main.bc bbout.cov main.cc.path.cov pathout.bc pathout.cov
+rm -f out bbout.bc main.cc.cov main.bc bbout.cov main.cc.path.cov pathout.bc pathout.cov func.bc func func.cov
 
 clang -g -c -emit-llvm main.cc -o main.bc
 
@@ -24,4 +24,13 @@ time ./pathout.cov main.cc.path.cov
 echo ""
 echo "Path Coverage result:"
 cat main.cc.path.cov
+echo ""
+
+opt -load-pass-plugin=../build/func_seq_pass.so -passes=funcseq main.bc -o func.bc
+clang++ func.bc -o func -L../build -l:func_seq_rt.a
+time ./func func.cov
+
+echo ""
+echo "Function Sequence Coverage result:"
+cat func.cov
 echo ""
