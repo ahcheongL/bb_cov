@@ -2,9 +2,8 @@
 
 ## Prerequisite
 
-1. Clang/LLVM, developed on version 13.0.1, not tested on other versions.
+1. Clang/LLVM 20.
     * Use apt package downloader (https://apt.llvm.org) or manualy built from source (https://releases.llvm.org/download.html).
-    `sudo apt install llvm-13-dev clang-13 libclang-13-dev lld-13 libc++abi-13-dev`
     * It assumes `llvm-config, clang, clang++, opt, ...` are on `PATH`
 
 2. [gllvm](https://github.com/SRI-CSL/gllvm), needed to get whole program bitcode
