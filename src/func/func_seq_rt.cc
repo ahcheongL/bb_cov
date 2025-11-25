@@ -174,6 +174,11 @@ void __record_func_entry(const char *file_name, const char *func_name) {
   return;
 }
 
+void __record_func_external(const char *func_name) {
+  seq_output_f << func_name << " EXTERNAL\n";
+  return;
+}
+
 void __record_func_ret(const char *file_name, const char *func_name) {
   seq_output_f << file_name << ":" << func_name << " RETURN\n";
   return;

@@ -124,17 +124,9 @@ uint32_t FuncSeqPass::insert_func_probes() {
     if (subp == NULL) { continue; }
 
     const llvm::StringRef dirname = subp->getDirectory();
-    std::string           filename = subp->getFilename().str();
+    if (dirname.find("/usr") != string::npos) { continue; }
 
-    if (dirname != "") { filename = string(dirname) + "/" + filename; }
-
-    if (filename.find("/usr") != string::npos) { continue; }
-
-    // get base name
-    size_t last_slash_pos = filename.find_last_of("/\\");
-    if (last_slash_pos != string::npos) {
-      filename = filename.substr(last_slash_pos + 1);
-    }
+    const string filename = subp->getFilename().str();
 
     // normal functions under test
     insert_func_probe_one_func(Func, filename);
@@ -160,11 +152,13 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
   llvm::FunctionCallee record_func_ret = Mod_ptr->getOrInsertFunction(
       "__record_func_ret", voidTy, int8PtrTy, int8PtrTy);
 
+  // Insert function entry probe
   llvm::BasicBlock &entry_bb = Func.getEntryBlock();
   auto              first_inst = entry_bb.getFirstNonPHIOrDbgOrLifetime();
   IRB->SetInsertPoint(first_inst);
   IRB->CreateCall(record_func_entry, {filename_const, func_name_const});
 
+  // Insert function return probes
   vector<llvm::ReturnInst *> ret_insts = {};
   for (llvm::BasicBlock &BB : Func) {
     for (llvm::Instruction &IN : BB) {
@@ -177,6 +171,58 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
   for (llvm::ReturnInst *ret_inst : ret_insts) {
     IRB->SetInsertPoint(ret_inst);
     IRB->CreateCall(record_func_ret, {filename_const, func_name_const});
+  }
+
+  // Insert libc function call probes
+  vector<llvm::CallInst *> call_insts = {};
+  for (llvm::BasicBlock &BB : Func) {
+    for (llvm::Instruction &IN : BB) {
+      llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&IN);
+      if (call_inst == NULL) { continue; }
+
+      llvm::Function *called_func = call_inst->getCalledFunction();
+      if (called_func == NULL) { continue; }
+
+      string called_func_name = called_func->getName().str();
+      if (called_func_name == "fread") {
+        llvm::outs() << "Found fread call in function: " << func_name << "\n";
+      }
+
+      if (!called_func->isDeclaration()) {
+        llvm::outs() << "Skipping call to defined function: "
+                     << called_func_name << "\n";
+        continue;
+      }
+      if (called_func->isIntrinsic()) {
+        llvm::outs() << "Skipping intrinsic call: " << called_func_name << "\n";
+        continue;
+      }
+
+      call_insts.push_back(call_inst);
+    }
+  }
+
+  llvm::FunctionCallee record_func_external =
+      Mod_ptr->getOrInsertFunction("__record_func_external", voidTy, int8PtrTy);
+
+  for (llvm::CallInst *call_inst : call_insts) {
+    IRB->SetInsertPoint(call_inst);
+    llvm::Function *called_func = call_inst->getCalledFunction();
+    llvm::StringRef called_func_name_ref = called_func->getName();
+
+    string called_func_name = called_func_name_ref.str();
+
+    if (called_func_name == "fread") {
+      llvm::outs() << "Inserting external probe for fread call in function: "
+                   << func_name << "\n";
+    }
+
+    if (called_func_name.find("__record_func") != string::npos) { continue; }
+
+    llvm::GlobalVariable *func_name_const =
+        gen_new_string_constant(called_func_name);
+
+    IRB->CreateCall(record_func_external, {func_name_const});
   }
 
   llvm::FunctionCallee cov_fini =
