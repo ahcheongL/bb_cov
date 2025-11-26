@@ -165,7 +165,7 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     show_progress(input_idx, num_inputs, start_time);
   }
 
-  cout << "[func_seq] All " << input_idx << " inputs processed." << endl;
+  cout << "\n[func_seq] All " << input_idx << " inputs processed." << endl;
   exit(0);
 }
 
