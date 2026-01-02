@@ -21,18 +21,19 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace std;
-
 class FuncSeqPass : public llvm::PassInfoMixin<FuncSeqPass> {
  public:
   llvm::PreservedAnalyses run(llvm::Module                &Module,
                               llvm::ModuleAnalysisManager &MAM);
 
  private:
-  void     instrument_main(llvm::Function &Func);
+  void instrument_main(llvm::Function &Func);
+
   uint32_t insert_func_probes();
-  void insert_func_probe_one_func(llvm::Function &Func, const string &filename);
-  set<llvm::Function *> get_dtor_funcs();
+  void     insert_func_probe_one_func(llvm::Function    &Func,
+                                      const std::string &filename);
+
+  std::set<llvm::Function *> get_dtor_funcs();
 
   llvm::Module      *Mod_ptr = NULL;
   llvm::LLVMContext *Ctxt_ptr = NULL;
@@ -44,7 +45,7 @@ class FuncSeqPass : public llvm::PassInfoMixin<FuncSeqPass> {
   llvm::Type *int8PtrTy = NULL;
   llvm::Type *int32PtrTy = NULL;
 
-  map<string, llvm::GlobalVariable *> new_string_globals = {};
-  llvm::GlobalVariable *gen_new_string_constant(const string &name);
+  std::map<std::string, llvm::GlobalVariable *> new_string_globals = {};
+  llvm::GlobalVariable *gen_new_string_constant(const std::string &name);
 };
 #endif

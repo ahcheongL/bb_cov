@@ -21,19 +21,21 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace std;
-
 class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
  public:
   llvm::PreservedAnalyses run(llvm::Module                &Module,
                               llvm::ModuleAnalysisManager &MAM);
 
  private:
-  void     instrument_main(llvm::Function &Func);
+  void instrument_main(llvm::Function &Func);
+
   uint32_t insert_bb_probes();
-  void insert_bb_probe_one_func(llvm::Function &Func, const string &filename);
+  void     insert_bb_probe_one_func(llvm::Function    &Func,
+                                    const std::string &filename);
+
   void init_bb_map_rt();
-  set<llvm::Function *> get_dtor_funcs();
+
+  std::set<llvm::Function *> get_dtor_funcs();
 
   llvm::Module      *Mod_ptr = NULL;
   llvm::LLVMContext *Ctxt_ptr = NULL;
@@ -49,7 +51,7 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
   llvm::StructType *cfuncEntryTy = NULL;
   llvm::StructType *cbbEntryTy = NULL;
 
-  unsigned int bb_id = 0;
+  uint32_t bb_id = 0;
 
   // Entire basic block map
   // file -> func -> set(bb)
@@ -59,7 +61,7 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
   llvm::GlobalVariable *gen_cfunc_entry(GFuncEntry *func_entry);
   llvm::GlobalVariable *gen_cbb_entry(GBBEntry *bb_entry);
 
-  map<string, llvm::GlobalVariable *> new_string_globals = {};
-  llvm::GlobalVariable *gen_new_string_constant(const string &name);
+  std::map<std::string, llvm::GlobalVariable *> new_string_globals = {};
+  llvm::GlobalVariable *gen_new_string_constant(const std::string &name);
 };
 #endif

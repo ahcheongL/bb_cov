@@ -39,7 +39,7 @@
 2. It will generate file `<output_fn>`
 Each line indicates whether a function or a basic block is covered.  
 F means function, and B means basic block.
-3. If `<output_fn>` already exists, the program reads the coverage and record accumulated coverage.
+3. If `<output_fn>` already exists, the program reads the coverage and writes accumulated coverage.
 
 ## 4. See results
 

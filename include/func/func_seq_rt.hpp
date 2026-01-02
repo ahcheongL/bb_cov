@@ -2,8 +2,6 @@
 #include <set>
 #include <string>
 
-using namespace std;
-
 extern "C" {
 
 void __handle_init(int32_t *argc_ptr, char **argv);

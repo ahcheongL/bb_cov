@@ -1,8 +1,8 @@
+#include <stdint.h>
+
 #include <map>
 #include <set>
 #include <string>
-
-using namespace std;
 
 struct CBBEntry {
   const char      *bb_name;
@@ -11,15 +11,15 @@ struct CBBEntry {
 };
 
 struct CFuncEntry {
-  struct CBBEntry   *bbs[sizeof(unsigned char) * 256];
-  const char        *func_name;
-  struct CFuncEntry *next;
+  struct CBBEntry         *bbs[sizeof(unsigned char) * 256];
+  const char              *func_name;
+  const struct CFuncEntry *next;
 };
 
 struct CFileEntry {
-  struct CFuncEntry *funcs[sizeof(unsigned char) * 256];
-  const char        *filename;
-  struct CFileEntry *next;
+  const struct CFuncEntry *funcs[sizeof(unsigned char) * 256];
+  const char              *filename;
+  const struct CFileEntry *next;
 };
 
 extern "C" {
@@ -29,12 +29,13 @@ extern "C" {
 // The size of the map is 256 (size of unsigned char in binary).
 extern struct CFileEntry *__file_func_map[sizeof(unsigned char) * 256];
 
-extern const unsigned int __num_bbs;
+extern const uint32_t __num_bbs;
 
-void __handle_init(int *argc_ptr, char **argv);
-void __record_bb_cov(const char *file_name, const char *func_name,
-                     const char *bb_name, const unsigned int bb_id);
-
-static void __write_cov(const map<string, map<string, set<string>>> &prev_cov);
-void        __cov_fini();
+void        __handle_init(int *argc_ptr, char **argv);
+void        __record_bb_cov(const char *file_name, const char *func_name,
+                            const char *bb_name, const uint32_t bb_id);
+static void __write_cov(
+    const std::map<std::string, std::map<std::string, std::set<std::string>>>
+        &prev_cov);
+void __cov_fini();
 }

@@ -35,15 +35,15 @@ llvm::PreservedAnalyses FuncSeqPass::run(llvm::Module                &Module,
 
   delete IRB;
 
-  string                   out;
+  std::string              out;
   llvm::raw_string_ostream output(out);
   bool                     has_error = llvm::verifyModule(*Mod_ptr, &output);
 
   if (has_error > 0) {
-    llvm::errs() << "IR errors : \n";
-    llvm::errs() << out;
-    // Mod_ptr->print(llvm::errs(), nullptr);
-    // llvm::errs() << "\n";
+    llvm::outs() << "IR errors : \n";
+    llvm::outs() << out;
+    // Mod_ptr->print(llvm::outs(), nullptr);
+    // llvm::outs() << "\n";
   }
 
   return llvm::PreservedAnalyses::all();
@@ -80,7 +80,7 @@ void FuncSeqPass::instrument_main(llvm::Function &Func) {
       "__handle_init", voidTy, int32PtrTy, int8PtrPtrTy);
 
   IRB->CreateCall(get_output_fn, {argc_ptr, argv});
-  set<llvm::ReturnInst *> ret_inst_set;
+  std::set<llvm::ReturnInst *> ret_inst_set;
   for (auto &BB : Func) {
     for (auto &I : BB) {
       if (llvm::ReturnInst *ret_inst = llvm::dyn_cast<llvm::ReturnInst>(&I)) {
@@ -102,49 +102,65 @@ void FuncSeqPass::instrument_main(llvm::Function &Func) {
 uint32_t FuncSeqPass::insert_func_probes() {
   uint32_t num_instrumented_funcs = 0;
 
-  set<llvm::Function *> dtor_funcs = get_dtor_funcs();
-  llvm::errs() << "Found " << dtor_funcs.size() << " dtor functions.\n";
+  std::set<llvm::Function *> dtor_funcs = get_dtor_funcs();
+  const uint32_t             num_dtor_funcs = dtor_funcs.size();
+  if (num_dtor_funcs > 0) {
+    llvm::outs() << "[func_seq] Found " << dtor_funcs.size()
+                 << " dtor functions.\n";
+  }
+
+  const uint32_t num_func = Mod_ptr->getFunctionList().size();
+  uint32_t       num_no_subprogram = 0;
 
   for (llvm::Function &Func : Mod_ptr->functions()) {
     if (dtor_funcs.find(&Func) != dtor_funcs.end()) {
-      llvm::errs() << "Skipping dtor function: " << Func.getName() << "\n";
+      llvm::outs() << "[func_seq] Skipping dtor function: " << Func.getName()
+                   << "\n";
       continue;
     }
 
-    const string mangled_func_name = Func.getName().str();
-    const string func_name = llvm::demangle(mangled_func_name);
+    const std::string mangled_func_name = Func.getName().str();
+    const std::string func_name = llvm::demangle(mangled_func_name);
 
     if (Func.isIntrinsic()) { continue; }
 
-    if (func_name.find("_GLOBAL__sub_I_") != string::npos) { continue; }
-
-    if (func_name.find("__cxx_global_var_init") != string::npos) { continue; }
+    if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
+    if (func_name.find("__cxx_global_var_init") != std::string::npos) {
+      continue;
+    }
 
     auto subp = Func.getSubprogram();
-    if (subp == NULL) { continue; }
+    if (subp == NULL) {
+      num_no_subprogram++;
+      continue;
+    }
 
     const llvm::StringRef dirname = subp->getDirectory();
-    if (dirname.find("/usr") != string::npos) { continue; }
+    if (dirname.find("/usr") != std::string::npos) { continue; }
 
-    const string filename = subp->getFilename().str();
+    const std::string filename = subp->getFilename().str();
 
     // normal functions under test
     insert_func_probe_one_func(Func, filename);
     num_instrumented_funcs++;
   }
 
+  if (num_no_subprogram / (float)num_func > 0.5) {
+    llvm::outs()
+        << "[func_seq] Warning: More than 50% of functions have no debug info. "
+           "The program may not be instrumented with debug information.\n";
+  }
+
   return num_instrumented_funcs;
 }
 
-void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
-                                             const string   &filename) {
-  const string mangled_func_name = Func.getName().str();
-  const string func_name = llvm::demangle(mangled_func_name);
+void FuncSeqPass::insert_func_probe_one_func(llvm::Function    &Func,
+                                             const std::string &filename) {
+  const std::string mangled_func_name = Func.getName().str();
+  const std::string func_name = llvm::demangle(mangled_func_name);
 
   llvm::GlobalVariable *filename_const = gen_new_string_constant(filename);
   llvm::GlobalVariable *func_name_const = gen_new_string_constant(func_name);
-
-  map<string, int> bb_name_count = {};
 
   llvm::FunctionCallee record_func_entry = Mod_ptr->getOrInsertFunction(
       "__record_func_entry", voidTy, int8PtrTy, int8PtrTy);
@@ -159,7 +175,7 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
   IRB->CreateCall(record_func_entry, {filename_const, func_name_const});
 
   // Insert function return probes
-  vector<llvm::ReturnInst *> ret_insts = {};
+  std::vector<llvm::ReturnInst *> ret_insts = {};
   for (llvm::BasicBlock &BB : Func) {
     for (llvm::Instruction &IN : BB) {
       if (llvm::ReturnInst *ret_inst = llvm::dyn_cast<llvm::ReturnInst>(&IN)) {
@@ -174,7 +190,7 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
   }
 
   // Insert libc function call probes
-  vector<llvm::CallInst *> call_insts = {};
+  std::vector<llvm::CallInst *> call_insts = {};
   for (llvm::BasicBlock &BB : Func) {
     for (llvm::Instruction &IN : BB) {
       llvm::CallInst *call_inst = llvm::dyn_cast<llvm::CallInst>(&IN);
@@ -183,16 +199,13 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
       llvm::Function *called_func = call_inst->getCalledFunction();
       if (called_func == NULL) { continue; }
 
-      string called_func_name = called_func->getName().str();
+      std::string called_func_name = called_func->getName().str();
       if (called_func_name == "fread") {
         llvm::outs() << "Found fread call in function: " << func_name << "\n";
       }
 
-      if (!called_func->isDeclaration()) {
-        llvm::outs() << "Skipping call to defined function: "
-                     << called_func_name << "\n";
-        continue;
-      }
+      if (!called_func->isDeclaration()) { continue; }
+
       if (called_func->isIntrinsic()) {
         llvm::outs() << "Skipping intrinsic call: " << called_func_name << "\n";
         continue;
@@ -210,14 +223,16 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
     llvm::Function *called_func = call_inst->getCalledFunction();
     llvm::StringRef called_func_name_ref = called_func->getName();
 
-    string called_func_name = called_func_name_ref.str();
+    std::string called_func_name = called_func_name_ref.str();
 
     if (called_func_name == "fread") {
       llvm::outs() << "Inserting external probe for fread call in function: "
                    << func_name << "\n";
     }
 
-    if (called_func_name.find("__record_func") != string::npos) { continue; }
+    if (called_func_name.find("__record_func") != std::string::npos) {
+      continue;
+    }
 
     llvm::GlobalVariable *func_name_const =
         gen_new_string_constant(called_func_name);
@@ -237,7 +252,7 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
       llvm::Function *called_func = call_inst->getCalledFunction();
       if (called_func == NULL) { continue; }
 
-      string called_func_name = called_func->getName().str();
+      std::string called_func_name = called_func->getName().str();
       if (called_func_name != "exit") { continue; }
       IRB->SetInsertPoint(call_inst);
       IRB->CreateCall(cov_fini, {});
@@ -246,7 +261,8 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function &Func,
   return;
 }
 
-llvm::GlobalVariable *FuncSeqPass::gen_new_string_constant(const string &name) {
+llvm::GlobalVariable *FuncSeqPass::gen_new_string_constant(
+    const std::string &name) {
   auto search = new_string_globals.find(name);
 
   if (search == new_string_globals.end()) {
@@ -259,8 +275,8 @@ llvm::GlobalVariable *FuncSeqPass::gen_new_string_constant(const string &name) {
   return search->second;
 }
 
-set<llvm::Function *> FuncSeqPass::get_dtor_funcs() {
-  set<llvm::Function *> dtor_funcs = {};
+std::set<llvm::Function *> FuncSeqPass::get_dtor_funcs() {
+  std::set<llvm::Function *> dtor_funcs = {};
 
   llvm::GlobalVariable *global_dtors =
       Mod_ptr->getGlobalVariable("llvm.global_dtors");
