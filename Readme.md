@@ -43,4 +43,4 @@ F means function, and B means basic block.
 
 ## 4. See results
 
-1. You can use bin/collect_cov.py script.
+You may use `scripts/get_bbcov_stat.py` script.
