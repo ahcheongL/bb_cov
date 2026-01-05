@@ -1,9 +1,11 @@
 #!/bin/bash
 set -e 
 
-rm -f out bbout.bc main.cc.cov main.bc bbout.cov main.cc.path.cov pathout.bc pathout.cov func.bc func func.cov
+rm -f out bbout.bc main.cc.cov main.bc bbout.cov main.cc.path.cov pathout.bc \
+  pathout.cov func.bc func func.cov void_main.cov void_main void_main.bc
 
 clang -g -c -emit-llvm main.cc -o main.bc
+clang -g -c -emit-llvm void_main.cc -o void_main.bc
 
 opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov main.bc -o bbout.bc
 clang++ bbout.bc -O0 -o bbout.cov -L../build -l:bb_cov_rt.a 
@@ -33,4 +35,13 @@ time ./func func.cov
 echo ""
 echo "Function Sequence Coverage result:"
 cat func.cov
+echo ""
+
+opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov void_main.bc -o void_main.bb.bc
+clang++ void_main.bb.bc -O0 -o void_main.bb -L../build -l:bb_cov_rt.a
+time ./void_main.bb void_main.cov
+
+echo ""
+echo "Coverage result for int main(void):"
+cat void_main.cov
 echo ""

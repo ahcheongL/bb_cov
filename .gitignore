@@ -55,5 +55,6 @@ test/out
 *.bc
 *.ll
 *.cov
+*.bb
 
 test/func

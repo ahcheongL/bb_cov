@@ -50,21 +50,31 @@ llvm::PreservedAnalyses FuncSeqPass::run(llvm::Module                &Module,
 }
 
 void FuncSeqPass::instrument_main(llvm::Function &Func) {
+  llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
+
+  llvm::Function *main_func = &Func;
+
   if (Func.arg_size() != 2) {
-    llvm::errs()
-        << "[func_seq] func_seq pass requires the main function to have 2 "
-           "arguments (argc and argv).\n";
-    llvm::errs() << "[func_seq] Coverage instrumentation may not work.\n";
-    return;
+    llvm::FunctionType *new_main_func_type =
+        llvm::FunctionType::get(int32Ty, {int32Ty, int8PtrPtrTy}, false);
+    llvm::Function *new_main = llvm::Function::Create(
+        new_main_func_type, main_func->getLinkage(), "main_new", Mod_ptr);
+    new_main->takeName(main_func);
+
+    auto insert_pt = new_main->begin();
+    new_main->splice(insert_pt, main_func);
+
+    main_func->replaceAllUsesWith(new_main);
+    main_func->eraseFromParent();
+
+    main_func = new_main;
   }
 
-  auto first_inst = Func.getEntryBlock().getFirstNonPHIOrDbgOrLifetime();
+  auto first_inst = main_func->getEntryBlock().getFirstNonPHIOrDbgOrLifetime();
   IRB->SetInsertPoint(first_inst);
 
-  llvm::Value *const argc = Func.getArg(0);
-  llvm::Value *const argv = Func.getArg(1);
-
-  llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
+  llvm::Value *const argc = main_func->getArg(0);
+  llvm::Value *const argv = main_func->getArg(1);
 
   llvm::AllocaInst *const argc_ptr = IRB->CreateAlloca(int32Ty);
 
@@ -81,7 +91,7 @@ void FuncSeqPass::instrument_main(llvm::Function &Func) {
 
   IRB->CreateCall(get_output_fn, {argc_ptr, argv});
   std::set<llvm::ReturnInst *> ret_inst_set;
-  for (auto &BB : Func) {
+  for (auto &BB : *main_func) {
     for (auto &I : BB) {
       if (llvm::ReturnInst *ret_inst = llvm::dyn_cast<llvm::ReturnInst>(&I)) {
         ret_inst_set.insert(ret_inst);
@@ -145,9 +155,11 @@ uint32_t FuncSeqPass::insert_func_probes() {
     num_instrumented_funcs++;
   }
 
-  if (num_no_subprogram / (float)num_func > 0.5) {
+  if ((num_no_subprogram / (float)num_func) > 0.7) {
     llvm::outs()
-        << "[func_seq] Warning: More than 50% of functions have no debug info. "
+        << "[func_seq] Warning: " << num_no_subprogram << " / " << num_func
+        << " (" << (num_no_subprogram / (float)num_func) * 100
+        << "%) of functions have no debug info. "
            "The program may not be instrumented with debug information.\n";
   }
 
