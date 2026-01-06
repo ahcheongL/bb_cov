@@ -5,6 +5,9 @@
 #include "llvm/IR/Verifier.h"
 #include "utils/hash.hpp"
 
+static llvm::cl::opt<bool> is_verbose_mode(
+    "verbose", llvm::cl::desc("enable verbose output"), llvm::cl::init(false));
+
 llvm::PreservedAnalyses FuncSeqPass::run(llvm::Module                &Module,
                                          llvm::ModuleAnalysisManager &MAM) {
   Mod_ptr = &Module;
@@ -30,8 +33,10 @@ llvm::PreservedAnalyses FuncSeqPass::run(llvm::Module                &Module,
 
   instrument_main(*main_func);
 
-  llvm::outs() << "[func_seq] Instrumented " << num_instrumented_funcs
-               << " functions.\n";
+  if (is_verbose_mode) {
+    llvm::outs() << "[func_seq] Instrumented " << num_instrumented_funcs
+                 << " functions.\n";
+  }
 
   delete IRB;
 
@@ -114,18 +119,20 @@ uint32_t FuncSeqPass::insert_func_probes() {
 
   std::set<llvm::Function *> dtor_funcs = get_dtor_funcs();
   const uint32_t             num_dtor_funcs = dtor_funcs.size();
-  if (num_dtor_funcs > 0) {
+  if ((num_dtor_funcs > 0) && is_verbose_mode) {
     llvm::outs() << "[func_seq] Found " << dtor_funcs.size()
                  << " dtor functions.\n";
   }
 
-  const uint32_t num_func = Mod_ptr->getFunctionList().size();
-  uint32_t       num_no_subprogram = 0;
+  uint32_t num_func = 0;
+  uint32_t num_no_subprogram = 0;
 
   for (llvm::Function &Func : Mod_ptr->functions()) {
     if (dtor_funcs.find(&Func) != dtor_funcs.end()) {
-      llvm::outs() << "[func_seq] Skipping dtor function: " << Func.getName()
-                   << "\n";
+      if (is_verbose_mode) {
+        llvm::outs() << "[func_seq] Skipping dtor function: " << Func.getName()
+                     << "\n";
+      }
       continue;
     }
 
@@ -133,11 +140,14 @@ uint32_t FuncSeqPass::insert_func_probes() {
     const std::string func_name = llvm::demangle(mangled_func_name);
 
     if (Func.isIntrinsic()) { continue; }
+    if (Func.isDeclaration()) { continue; }
 
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
     if (func_name.find("__cxx_global_var_init") != std::string::npos) {
       continue;
     }
+
+    num_func++;
 
     auto subp = Func.getSubprogram();
     if (subp == NULL) {
@@ -155,8 +165,8 @@ uint32_t FuncSeqPass::insert_func_probes() {
     num_instrumented_funcs++;
   }
 
-  if ((num_no_subprogram / (float)num_func) > 0.7) {
-    llvm::outs()
+  if ((num_no_subprogram / (float)num_func) > 0.6) {
+    llvm::errs()
         << "[func_seq] Warning: " << num_no_subprogram << " / " << num_func
         << " (" << (num_no_subprogram / (float)num_func) * 100
         << "%) of functions have no debug info. "
@@ -212,16 +222,9 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function    &Func,
       if (called_func == NULL) { continue; }
 
       std::string called_func_name = called_func->getName().str();
-      if (called_func_name == "fread") {
-        llvm::outs() << "Found fread call in function: " << func_name << "\n";
-      }
-
       if (!called_func->isDeclaration()) { continue; }
 
-      if (called_func->isIntrinsic()) {
-        llvm::outs() << "Skipping intrinsic call: " << called_func_name << "\n";
-        continue;
-      }
+      if (called_func->isIntrinsic()) { continue; }
 
       call_insts.push_back(call_inst);
     }
@@ -236,11 +239,6 @@ void FuncSeqPass::insert_func_probe_one_func(llvm::Function    &Func,
     llvm::StringRef called_func_name_ref = called_func->getName();
 
     std::string called_func_name = called_func_name_ref.str();
-
-    if (called_func_name == "fread") {
-      llvm::outs() << "Inserting external probe for fread call in function: "
-                   << func_name << "\n";
-    }
 
     if (called_func_name.find("__record_func") != std::string::npos) {
       continue;
@@ -321,7 +319,7 @@ std::set<llvm::Function *> FuncSeqPass::get_dtor_funcs() {
 
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION,  // Plugin API version
-          "BBCovPassPlugin",        // Plugin name
+          "FuncSeqPassPlugin",      // Plugin name
           LLVM_VERSION_STRING,      // LLVM version
           [](llvm::PassBuilder &PB) {
             // Register module-level pass

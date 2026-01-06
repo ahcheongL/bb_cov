@@ -25,7 +25,7 @@ LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes`
 
 all: bb_cov path_cov func_seq
 
-bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a
+bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a build/bb_cov_instant_rt.a
 path_cov: build/path_cov_pass.so build/path_cov_rt.a
 func_seq: build/func_seq_pass.so build/func_seq_rt.a
 
@@ -44,6 +44,10 @@ build/bb_cov_pass.so: build/bb_cov_pass.o build/hash.o build/pass_bb_map.o
 build/bb_cov_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_rt.o
 	$(AR) rsv $@ build/bb_cov_rt.o build/hash.o
+
+build/bb_cov_instant_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
+	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_instant_rt.o -DWRITE_COV_PER_BB
+	$(AR) rsv $@ build/bb_cov_instant_rt.o build/hash.o
 
 build/path_cov_pass.o: src/path/path_cov_pass.cc include/path/path_cov_pass.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@

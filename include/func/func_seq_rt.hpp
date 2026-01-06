@@ -2,6 +2,8 @@
 #include <set>
 #include <string>
 
+#define OUTPUT_FN "FUNC_SEQ_OUTPUT_FN"
+
 extern "C" {
 
 void __handle_init(int32_t *argc_ptr, char **argv);

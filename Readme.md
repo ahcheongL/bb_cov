@@ -44,3 +44,11 @@ F means function, and B means basic block.
 ## 4. See results
 
 You may use `scripts/get_bbcov_stat.py` script.
+To see line coverage, use `scripts/get_line_cov.py` script with the resulting basic block coverage file.
+
+## 5. Instant basic block coverage for crashing executions
+1. Follow the same steps as above, but when building the instrumented executable, link with `-l:bb_cov_instant_rt.a` instead of `-l:bb_cov_rt.a`.
+    * Example: `clang++ <out.bc> <compile flags> -o <target.cov> -L {$PROJECT_PATH}/build -l:bb_cov_instant_rt.a`
+
+    * The original `bb_cov_rt.a` write the coverage data at the normal program termination, so if the program crashes, the coverage data is lost.
+    * The `bb_cov_instant_rt.a` writes the coverage data immediately when a new basic block is executed, so even if the program crashes, you can still get the coverage data up to the crash point. It may have performance overhead due to frequent file I/O operations.

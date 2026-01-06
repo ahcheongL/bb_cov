@@ -59,6 +59,17 @@ void show_progress(size_t current, size_t total,
 }
 
 void __handle_init(int32_t *argc_ptr, char **argv) {
+  const char *env_output_fn = getenv(OUTPUT_FN);
+
+  if (env_output_fn != nullptr) {
+    seq_output_f.open(env_output_fn);
+    std::cout << "[func_seq] Coverage output file: " << env_output_fn
+              << std::endl;
+    return;
+  }
+
+  // The environment variable is not set, parse arguments
+
   int32_t argc = *argc_ptr;
 
   if (argc < 2) {
@@ -72,6 +83,11 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     std::cout << "  if @@ placeholder is in <args ...>, it is considered as "
                  "replaying all inputs in <inputs_dir> and generating coverage "
                  "reports to [seq_output_dir].\n";
+
+    std::cout << "\n";
+    std::cout
+        << "If environment variable FUNC_SEQ_OUTPUT_FN is set, "
+           "it will override [seq_output_fn] argument. (no directory mode)\n";
     exit(1);
   }
 
@@ -85,8 +101,8 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
 
   if (placeholder_idx == -1) {
     // normal execution with one input file
-    int32_t new_argc = argc - 1;
-    char   *seq_output_fn = argv[new_argc];
+    int32_t     new_argc = argc - 1;
+    const char *seq_output_fn = argv[new_argc];
 
     seq_output_f.open(seq_output_fn);
     argv[new_argc] = nullptr;

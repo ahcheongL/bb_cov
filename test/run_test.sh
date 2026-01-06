@@ -1,11 +1,13 @@
 #!/bin/bash
 set -e 
 
-rm -f out bbout.bc main.cc.cov main.bc bbout.cov main.cc.path.cov pathout.bc \
-  pathout.cov func.bc func func.cov void_main.cov void_main void_main.bc
+cd "$(dirname "$0")"
+
+rm -f out void_main crash *.bc *.cov *.path *.bb *.func
 
 clang -g -c -emit-llvm main.cc -o main.bc
 clang -g -c -emit-llvm void_main.cc -o void_main.bc
+clang -g -c -emit-llvm crash.cc -o crash.bc
 
 opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov main.bc -o bbout.bc
 clang++ bbout.bc -O0 -o bbout.cov -L../build -l:bb_cov_rt.a 
@@ -44,4 +46,27 @@ time ./void_main.bb void_main.cov
 echo ""
 echo "Coverage result for int main(void):"
 cat void_main.cov
+echo ""
+
+opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov crash.bc -o crash.bb.bc
+
+clang++ crash.bb.bc -O0 -o crash.bb -L../build -l:bb_cov_rt.a
+
+set +e
+
+time ./crash.bb crash.cov
+
+echo ""
+echo "Coverage result for crash program (using normal runtime):"
+cat crash.cov
+echo ""
+
+
+clang++ crash.bb.bc -O0 -o crash.bb -L../build -l:bb_cov_instant_rt.a
+
+time ./crash.bb crash.cov
+
+echo ""
+echo "Coverage result for crash program:"
+cat crash.cov
 echo ""

@@ -5,6 +5,9 @@
 #include "llvm/IR/Verifier.h"
 #include "utils/hash.hpp"
 
+static llvm::cl::opt<bool> is_verbose_mode(
+    "verbose", llvm::cl::desc("enable verbose output"), llvm::cl::init(false));
+
 llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
                                          llvm::ModuleAnalysisManager &MAM) {
   Mod_ptr = &Module;
@@ -36,8 +39,10 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
       *Mod_ptr, int32Ty, true, llvm::GlobalValue::ExternalLinkage,
       llvm::ConstantInt::get(int32Ty, bb_id), "__num_bbs");
 
-  llvm::outs() << "[bb_cov] Instrumented " << num_instrumented_funcs
-               << " functions.\n";
+  if (is_verbose_mode) {
+    llvm::outs() << "[bb_cov] Instrumented " << num_instrumented_funcs
+                 << " functions.\n";
+  }
 
   delete IRB;
   free_bb_map(file_bb_map);
@@ -47,10 +52,10 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
   bool                     has_error = llvm::verifyModule(*Mod_ptr, &output);
 
   if (has_error > 0) {
-    llvm::outs() << "IR errors : \n";
-    llvm::outs() << out;
-    Mod_ptr->print(llvm::outs(), nullptr);
-    llvm::outs() << "\n";
+    llvm::errs() << "IR errors : \n";
+    llvm::errs() << out;
+    // Mod_ptr->print(llvm::errs(), nullptr);
+    // llvm::errs() << "\n";
   }
 
   return llvm::PreservedAnalyses::all();
@@ -121,20 +126,20 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
 
   std::set<llvm::Function *> dtor_funcs = get_dtor_funcs();
   const uint32_t             num_dtor_funcs = dtor_funcs.size();
-  if (num_dtor_funcs > 0) {
+  if ((num_dtor_funcs > 0) && is_verbose_mode) {
     llvm::outs() << "[bb_cov] Found " << dtor_funcs.size()
                  << " dtor functions.\n";
   }
 
-  const uint32_t num_func = Mod_ptr->getFunctionList().size();
-  llvm::outs() << "[bb_cov] Total number of functions in module: " << num_func
-               << "\n";
+  uint32_t num_func = 0;
   uint32_t num_no_subprogram = 0;
 
   for (llvm::Function &Func : Mod_ptr->functions()) {
     if (dtor_funcs.find(&Func) != dtor_funcs.end()) {
-      llvm::outs() << "[bb_cov] Skipping dtor function: " << Func.getName()
-                   << "\n";
+      if (is_verbose_mode) {
+        llvm::outs() << "[bb_cov] Skipping dtor function: " << Func.getName()
+                     << "\n";
+      }
       continue;
     }
 
@@ -142,6 +147,7 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
     const std::string func_name = llvm::demangle(mangled_func_name);
 
     if (Func.isIntrinsic()) { continue; }
+    if (Func.isDeclaration()) { continue; }
 
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
     if (func_name.find("__cxx_global_var_init") != std::string::npos) {
@@ -150,6 +156,8 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
     if (func_name == "__record_bb_cov" || func_name == "__cov_fini") {
       continue;
     }
+
+    num_func++;
 
     auto subp = Func.getSubprogram();
     if (subp == NULL) {
@@ -169,7 +177,7 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
   }
 
   if ((num_no_subprogram / (float)num_func) > 0.7) {
-    llvm::outs()
+    llvm::errs()
         << "[bb_cov] Warning: " << num_no_subprogram << " / " << num_func
         << " (" << (num_no_subprogram / (float)num_func) * 100
         << "%) of functions have no debug info. "
