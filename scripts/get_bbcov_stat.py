@@ -187,8 +187,12 @@ def main(argv):
             total_bbs += len(acc_bb_cov[file][func])
     print(f"Total # of BBs : {total_bbs}")
 
-    print(f"Total # of unique covered funcs: {accumulated_func_cov}")
-    print(f"Total # of unique covered BBs: {accumulated_bb_cov}")
+    print(
+        f"Total # of unique covered funcs: {accumulated_func_cov}/{total_funcs} ({accumulated_func_cov / total_funcs * 100:.1f}%)"
+    )
+    print(
+        f"Total # of unique covered BBs: {accumulated_bb_cov}/{total_bbs} ({accumulated_bb_cov / total_bbs * 100:.1f}%)"
+    )
 
     print(f"# of BBs always covered: {num_bbs_always_covered}")
     print(f"# of BBs 99% covered: {num_bbs_99_covered}")
