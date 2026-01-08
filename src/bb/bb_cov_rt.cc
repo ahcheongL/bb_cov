@@ -66,6 +66,10 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   if (env_output_fn != nullptr) {
     cov_output_fn = env_output_fn;
 
+    std::cout << "[bb_cov] Found environment variable " << OUTPUT_FN
+              << ", setting coverage output file to " << cov_output_fn
+              << std::endl;
+
     // Initialize bb_cov_arr
     bb_cov_arr = (char *)malloc(__num_bbs);
     if (bb_cov_arr == nullptr) {
@@ -76,8 +80,6 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     memset(bb_cov_arr, 0, __num_bbs);
 
     std::cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track."
-              << std::endl;
-    std::cout << "[bb_cov] Coverage output file: " << cov_output_fn
               << std::endl;
     return;
   }
