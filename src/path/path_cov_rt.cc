@@ -7,6 +7,9 @@
 
 static const char *cov_output_fn = NULL;
 
+#pragma clang attribute push(__attribute__((annotate("probe_function"))), \
+                             apply_to = function)
+
 extern "C" {
 
 void __get_output_fn(int *argc_ptr, char ***argv_ptr) {
@@ -43,3 +46,5 @@ void __cov_fini() {
   return;
 }
 }
+
+#pragma clang attribute pop

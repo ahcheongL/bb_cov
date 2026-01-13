@@ -143,6 +143,8 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
       continue;
     }
 
+    if (is_probe_func(Func)) { continue; }
+
     const std::string mangled_func_name = Func.getName().str();
     const std::string func_name = llvm::demangle(mangled_func_name);
 
@@ -151,9 +153,6 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
 
     if (func_name.find("_GLOBAL__sub_I_") != std::string::npos) { continue; }
     if (func_name.find("__cxx_global_var_init") != std::string::npos) {
-      continue;
-    }
-    if (func_name == "__record_bb_cov" || func_name == "__cov_fini") {
       continue;
     }
 
@@ -209,6 +208,7 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function    &Func,
         llvm::dyn_cast<llvm::Instruction>(first_inst);
 
     if (llvm::isa<llvm::LandingPadInst>(first_instr)) { continue; }
+    if (is_probe_BB(BB)) { continue; }
 
     uint32_t begin_line_num = -1;
     uint32_t end_line_num = 0;
@@ -493,6 +493,19 @@ std::set<llvm::Function *> BB_COV_Pass::get_dtor_funcs() {
   }
 
   return dtor_funcs;
+}
+
+bool BB_COV_Pass::is_probe_func(llvm::Function &Func) {
+  if (!Func.hasFnAttribute("annotate")) { return false; }
+
+  llvm::StringRef val = Func.getFnAttribute("annotate").getValueAsString();
+  if (val == "probe_function") { return true; }
+  return false;
+}
+
+bool BB_COV_Pass::is_probe_BB(llvm::BasicBlock &BB) {
+  llvm::MDNode *Node = BB.getTerminator()->getMetadata("is_probe");
+  return (Node != nullptr);
 }
 
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {

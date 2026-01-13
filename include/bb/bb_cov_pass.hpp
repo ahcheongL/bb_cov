@@ -37,6 +37,9 @@ class BB_COV_Pass : public llvm::PassInfoMixin<BB_COV_Pass> {
 
   std::set<llvm::Function *> get_dtor_funcs();
 
+  bool is_probe_func(llvm::Function &Func);
+  bool is_probe_BB(llvm::BasicBlock &BB);
+
   llvm::Module      *Mod_ptr = NULL;
   llvm::LLVMContext *Ctxt_ptr = NULL;
   llvm::IRBuilder<> *IRB = NULL;

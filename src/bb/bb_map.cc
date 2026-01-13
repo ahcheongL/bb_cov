@@ -4,6 +4,9 @@
 
 #include "utils/hash.hpp"
 
+#pragma clang attribute push(__attribute__((annotate("probe_function"))), \
+                             apply_to = function)
+
 GFuncEntry *insert_FileFuncEntry(GFileEntry          **file_map,
                                  const std::string    &filename,
                                  llvm::GlobalVariable *file_gvar,
@@ -132,3 +135,5 @@ void free_bb_map(GFileEntry **file_map) {
   memset(file_map, 0, sizeof(GFileEntry *) * hash_map_size);
   return;
 }
+
+#pragma clang attribute pop

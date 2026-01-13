@@ -25,6 +25,9 @@ namespace fs = std::filesystem;
 #define FORKSRV_READ_FD 198
 #define FORKSRV_WRITE_FD (FORKSRV_READ_FD + 1)
 
+#pragma clang attribute push(__attribute__((annotate("probe_function"))), \
+                             apply_to = function)
+
 extern "C" {
 
 void show_progress(size_t current, size_t total,
@@ -222,3 +225,5 @@ void __cov_fini() {
 }
 
 }  // extern "C"
+
+#pragma clang attribute pop
