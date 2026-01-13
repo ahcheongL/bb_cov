@@ -51,7 +51,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module                &Module,
   llvm::raw_string_ostream output(out);
   bool                     has_error = llvm::verifyModule(*Mod_ptr, &output);
 
-  if (has_error > 0) {
+  if (has_error) {
     llvm::errs() << "IR errors : \n";
     llvm::errs() << out;
     // Mod_ptr->print(llvm::errs(), nullptr);

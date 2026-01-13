@@ -44,7 +44,7 @@ llvm::PreservedAnalyses FuncSeqPass::run(llvm::Module                &Module,
   llvm::raw_string_ostream output(out);
   bool                     has_error = llvm::verifyModule(*Mod_ptr, &output);
 
-  if (has_error > 0) {
+  if (has_error) {
     llvm::outs() << "IR errors : \n";
     llvm::outs() << out;
     // Mod_ptr->print(llvm::outs(), nullptr);
