@@ -14,7 +14,7 @@ GFuncEntry *insert_FileFuncEntry(GFileEntry          **file_map,
                                  llvm::GlobalVariable *func_gvar) {
   GFileEntry *file_entry = insert_FileEntry(file_map, filename, file_gvar);
 
-  unsigned char func_name_hash = simple_hash(func_name);
+  uint8_t func_name_hash = simple_hash(func_name);
 
   if (file_entry->funcs[func_name_hash] == nullptr) {
     GFuncEntry *new_entry = new GFuncEntry();
@@ -42,7 +42,7 @@ GFuncEntry *insert_FileFuncEntry(GFileEntry          **file_map,
 
 GFileEntry *insert_FileEntry(GFileEntry **file_map, const std::string &filename,
                              llvm::GlobalVariable *file_gvar) {
-  unsigned char filename_hash = simple_hash(filename);
+  uint8_t filename_hash = simple_hash(filename);
 
   if (file_map[filename_hash] == nullptr) {
     GFileEntry *new_entry = new GFileEntry();
@@ -70,7 +70,7 @@ GFileEntry *insert_FileEntry(GFileEntry **file_map, const std::string &filename,
 
 GBBEntry *insert_BBEntry(GFuncEntry *func_entry, const std::string &bb_name,
                          llvm::GlobalVariable *bb_gvar) {
-  unsigned char bb_name_hash = simple_hash(bb_name);
+  uint8_t bb_name_hash = simple_hash(bb_name);
 
   if (func_entry->bbs[bb_name_hash] == nullptr) {
     GBBEntry *new_entry = new GBBEntry();
@@ -97,7 +97,7 @@ GBBEntry *insert_BBEntry(GFuncEntry *func_entry, const std::string &bb_name,
 }
 
 void free_bb_map(GFileEntry **file_map) {
-  const int hash_map_size = sizeof(unsigned char) * 256;
+  const uint32_t hash_map_size = sizeof(uint8_t) * 256;
 
   for (size_t idx = 0; idx < hash_map_size; idx++) {
     GFileEntry *file_entry = file_map[idx];

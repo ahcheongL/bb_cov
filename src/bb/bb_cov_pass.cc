@@ -170,6 +170,7 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
     if (dirname != "") { filename = std::string(dirname) + "/" + filename; }
 
     if (filename.find("/usr") != std::string::npos) { continue; }
+
     // normal functions under test
     insert_bb_probe_one_func(Func, filename);
     num_instrumented_funcs++;
@@ -188,8 +189,10 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
 
 void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function    &Func,
                                            const std::string &filename) {
-  const std::string mangled_func_name = Func.getName().str();
-  const std::string func_name = llvm::demangle(mangled_func_name);
+  std::string func_name = llvm::demangle(Func.getName().str());
+  if (func_name.find(".") != std::string::npos) {
+    func_name = func_name.substr(0, func_name.find("."));
+  }
 
   llvm::GlobalVariable *filename_const = gen_new_string_constant(filename);
   llvm::GlobalVariable *func_name_const = gen_new_string_constant(func_name);
