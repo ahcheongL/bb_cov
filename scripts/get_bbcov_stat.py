@@ -22,12 +22,12 @@ def get_bb_cov(cov_file: str) -> dict[str, dict[str, dict[str, bool]]]:
             continue
 
         if line[0] == "File":
-            cur_file = line[1]
+            cur_file = " ".join(line[1:])
             cov_data[cur_file] = {}
             continue
 
         if line[0] == "F":
-            cur_func = line[1]
+            cur_func = " ".join(line[1:-1])
             cov_data[cur_file][cur_func] = {}
             continue
 
