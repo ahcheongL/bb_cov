@@ -21,7 +21,7 @@ endif
 
 CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 
-LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes` -fuse-ld=lld
+LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes`
 
 all: bb_cov path_cov func_seq
 
