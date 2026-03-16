@@ -30,13 +30,22 @@ echo "Path Coverage result:"
 cat main.cc.path.cov
 echo ""
 
-opt -load-pass-plugin=../build/func_seq_pass.so -passes=funcseq main.bc -o func.bc
-clang++ func.bc -o func -L../build -l:func_seq_rt.a
+opt -load-pass-plugin=../build/func_cov_pass.so -passes=funccov main.bc -o func.bc
+clang++ func.bc -o func -L../build -l:func_cov_rt.a
 time ./func func.cov
 
 echo ""
-echo "Function Sequence Coverage result:"
+echo "Function Coverage result:"
 cat func.cov
+echo ""
+
+opt -load-pass-plugin=../build/func_seq_pass.so -passes=funcseq main.bc -o funcseq.bc
+clang++ funcseq.bc -o funcseq -L../build -l:func_seq_rt.a
+time ./funcseq func.seq.cov
+
+echo ""
+echo "Function Sequence Coverage result:"
+cat func.seq.cov
 echo ""
 
 opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov void_main.bc -o void_main.bb.bc

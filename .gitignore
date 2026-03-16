@@ -58,3 +58,7 @@ test/out
 *.bb
 
 test/func
+compile_commands.json
+.cache/
+
+test/funcseq

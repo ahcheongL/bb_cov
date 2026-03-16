@@ -1,5 +1,6 @@
-#include "bb/bb_cov_rt.hpp"
+#include "func/func_cov_rt.hpp"
 
+#include <cstddef>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,19 +14,17 @@
 #include <map>
 #include <mutex>
 #include <set>
-#include <sstream>
 
 #include "utils/hash.hpp"
 
 static const char *cov_output_fn = nullptr;
 
 // Used for fast check of covered basic blocks
-static char *bb_cov_arr = nullptr;
+static char *func_cov_arr = nullptr;
 
 namespace fs = std::filesystem;
 
-static std::map<std::string, std::map<std::string, std::set<std::string>>>
-    prev_cov;
+static std::map<std::string, std::set<std::string>> prev_cov;
 
 #pragma clang attribute push(__attribute__((annotate("probe_function"))),      \
                              apply_to = function)
@@ -70,21 +69,21 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   if (env_output_fn != nullptr) {
     cov_output_fn = env_output_fn;
 
-    std::cout << "[bb_cov] Found environment variable " << OUTPUT_FN
+    std::cout << "[func_cov] Found environment variable " << OUTPUT_FN
               << ", setting coverage output file to " << cov_output_fn
               << std::endl;
 
-    // Initialize bb_cov_arr
-    bb_cov_arr = (char *)malloc(__num_bbs);
-    if (bb_cov_arr == nullptr) {
-      std::cerr << "[bb_cov] Failed to allocate memory for coverage array."
+    // Initialize func_cov_arr
+    func_cov_arr = (char *)malloc(__num_funcs);
+    if (func_cov_arr == nullptr) {
+      std::cerr << "[func_cov] Failed to allocate memory for coverage array."
                 << std::endl;
       exit(1);
     }
 
-    memset(bb_cov_arr, 0, __num_bbs);
+    memset(func_cov_arr, 0, __num_funcs);
 
-    std::cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track."
+    std::cout << "[func_cov] Found " << __num_funcs << " functions to track."
               << std::endl;
     return;
   }
@@ -92,7 +91,7 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   int32_t argc = *argc_ptr;
 
   if (argc < 2) {
-    std::cout << "[bb_cov] Usage : " << argv[0]
+    std::cout << "[func_cov] Usage : " << argv[0]
               << " <args ...> [cov_output_fn] [inputs_dir] [cov_output_dir] \n";
     std::cout << "  <args ...> : arguments for the target program\n";
     std::cout
@@ -113,15 +112,15 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     }
   }
 
-  // Initialize bb_cov_arr
-  bb_cov_arr = (char *)malloc(__num_bbs);
-  if (bb_cov_arr == nullptr) {
-    std::cerr << "[bb_cov] Failed to allocate memory for coverage array."
+  // Initialize func_cov_arr
+  func_cov_arr = (char *)malloc(__num_funcs);
+  if (func_cov_arr == nullptr) {
+    std::cerr << "[func_cov] Failed to allocate memory for coverage array."
               << std::endl;
     exit(1);
   }
 
-  memset(bb_cov_arr, 0, __num_bbs);
+  memset(func_cov_arr, 0, __num_funcs);
 
   if (placeholder_idx == -1) {
     // normal execution with one input file
@@ -129,9 +128,9 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     cov_output_fn = argv[new_argc];
     argv[new_argc] = nullptr;
     *argc_ptr = new_argc;
-    std::cout << "[bb_cov] Found " << __num_bbs << " basic blocks to track."
+    std::cout << "[func_cov] Found " << __num_funcs << " functions to track."
               << std::endl;
-    std::cout << "[bb_cov] Coverage output file: " << cov_output_fn
+    std::cout << "[func_cov] Coverage output file: " << cov_output_fn
               << std::endl;
 #ifdef WRITE_COV_PER_BB
     __cov_read_prev_cov();
@@ -139,7 +138,8 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     return;
   }
 
-  std::cout << "[bb_cov] Replaying all inputs in directory mode." << std::endl;
+  std::cout << "[func_cov] Replaying all inputs in directory mode."
+            << std::endl;
 
   *argc_ptr = argc - 2;
   const char *inputs_dir = argv[argc - 2];
@@ -234,29 +234,28 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   exit(0);
 }
 
-void __record_bb_cov(const char *file_name, const char *func_name,
-                     const char *bb_name, const uint32_t bb_id) {
-  if (bb_cov_arr == nullptr) {
+void __record_func_cov(const char *file_name, const char *func_name,
+                       const uint32_t func_id) {
+  if (func_cov_arr == nullptr) {
     return;
   }
 
   // Hack to reduce lock contention
-  if (bb_cov_arr[bb_id] == 1) {
+  if (func_cov_arr[func_id] == 1) {
     return;
   }
 
   {
-    static std::mutex bb_cov_mutex;
-    std::lock_guard<std::mutex> guard(bb_cov_mutex);
-    if (bb_cov_arr[bb_id] == 1) {
+    static std::mutex func_cov_mutex;
+    std::lock_guard<std::mutex> guard(func_cov_mutex);
+    if (func_cov_arr[func_id] == 1) {
       return;
     }
-    bb_cov_arr[bb_id] = 1;
+    func_cov_arr[func_id] = 1;
   }
 
   uint8_t file_hash = simple_hash(file_name);
   uint8_t func_hash = simple_hash(func_name);
-  uint8_t bb_hash = simple_hash(bb_name);
 
   const CFileEntry *file_entry = __file_func_map[file_hash];
   // skip nullptr checks for speed, entry pointers should not be nullptr
@@ -268,7 +267,7 @@ void __record_bb_cov(const char *file_name, const char *func_name,
     file_entry = file_entry->next;
   }
 
-  const CFuncEntry *func_entry = file_entry->funcs[func_hash];
+  CFuncEntry *func_entry = file_entry->funcs[func_hash];
   while (func_entry != nullptr) {
     if (func_entry->func_name == func_name) {
       break;
@@ -276,16 +275,9 @@ void __record_bb_cov(const char *file_name, const char *func_name,
     func_entry = func_entry->next;
   }
 
-  CBBEntry *bb_entry = func_entry->bbs[bb_hash];
-  while (bb_entry != nullptr) {
-    if (bb_entry->bb_name == bb_name) {
-      break;
-    }
-    bb_entry = bb_entry->next;
-  }
-  bb_entry->is_covered = 1;
+  func_entry->is_covered = 1;
 
-#ifdef WRITE_COV_PER_BB
+#ifdef WRITE_COV_PER_FUNC
   __write_cov();
 #endif
 
@@ -294,7 +286,7 @@ void __record_bb_cov(const char *file_name, const char *func_name,
 
 static void __write_cov() {
   if (cov_output_fn == nullptr) {
-    std::cerr << "[bb_cov] No coverage information collected." << std::endl;
+    std::cerr << "[func_cov] No coverage information collected." << std::endl;
     return;
   }
 
@@ -303,7 +295,7 @@ static void __write_cov() {
 
   std::ofstream cov_file_out(cov_output_fn, std::ios::out);
   if (!cov_file_out.is_open()) {
-    std::cerr << "[bb_cov] Failed to open coverage output file." << std::endl;
+    std::cerr << "[func_cov] Failed to open coverage output file." << std::endl;
     return;
   }
 
@@ -315,8 +307,7 @@ static void __write_cov() {
       cov_file_out << "File " << file_name << "\n";
 
       // to merge with previous coverage info, fetch previous coverage
-      const std::map<std::string, std::set<std::string>> *prev_file_cov =
-          nullptr;
+      const std::set<std::string> *prev_file_cov = nullptr;
       auto search = prev_cov.find(file_name);
       if (search != prev_cov.end()) {
         prev_file_cov = &(search->second);
@@ -326,42 +317,18 @@ static void __write_cov() {
         const CFuncEntry *func_entry = file_entry->funcs[func_idx];
         while (func_entry != nullptr) {
           const char *func_name = func_entry->func_name;
-          cov_file_out << "F " << func_name << " ";
+          cov_file_out << "Func " << func_name << " ";
 
           // merge with previous coverage info
-          const std::set<std::string> *prev_func_cov = nullptr;
+          bool is_func_covered = func_entry->is_covered != 0;
+
           if (prev_file_cov != nullptr) {
-            auto search2 = prev_file_cov->find(func_name);
-            if (search2 != prev_file_cov->end()) {
-              prev_func_cov = &(search2->second);
-            }
-          }
-
-          std::stringstream bb_ss;
-
-          bool is_func_covered = false;
-          for (size_t bb_idx = 0; bb_idx < hash_map_size; bb_idx++) {
-            const CBBEntry *bb_entry = func_entry->bbs[bb_idx];
-            while (bb_entry != nullptr) {
-              const char *bb_name = bb_entry->bb_name;
-              bool is_bb_covered = (bb_entry->is_covered != 0);
-              if (!is_bb_covered && prev_func_cov != nullptr &&
-                  prev_func_cov->find(bb_name) != prev_func_cov->end()) {
-                is_bb_covered = true;
-              }
-              is_func_covered = is_func_covered || is_bb_covered;
-
-              bb_ss << "B " << bb_name << " " << (is_bb_covered ? "1" : "0")
-                    << "\n";
-
-              bb_entry = bb_entry->next;
-            }
+            is_func_covered =
+                is_func_covered ||
+                (prev_file_cov->find(func_name) != prev_file_cov->end());
           }
 
           cov_file_out << (is_func_covered ? "1" : "0") << "\n";
-
-          cov_file_out << bb_ss.str();
-
           func_entry = func_entry->next;
         }
       }
@@ -391,15 +358,13 @@ static void __cov_read_prev_cov() {
     return;
   }
 
-  std::cout << "[bb_cov] Found existing coverage file, reading ...\n";
+  std::cout << "[func_cov] Found existing coverage file, reading ...\n";
   std::string type;
   std::string name;
   bool is_covered = false;
-  std::string cur_func = "";
   std::string line;
 
-  std::map<std::string, std::set<std::string>> *cur_file_map = nullptr;
-  std::set<std::string> *cur_func_map = nullptr;
+  std::set<std::string> *cur_file_map = nullptr;
 
   bool found_error = false;
 
@@ -408,14 +373,14 @@ static void __cov_read_prev_cov() {
       continue;
     }
 
-    auto pos1 = line.find(" ");
+    size_t pos1 = line.find(" ");
 
     if (pos1 == std::string::npos) {
       found_error = true;
       break;
     }
 
-    auto pos2 = line.find_last_of(" ");
+    size_t pos2 = line.find_last_of(" ");
 
     if (pos2 == std::string::npos) {
       found_error = true;
@@ -428,10 +393,7 @@ static void __cov_read_prev_cov() {
 
     if (type == "File") {
       cur_file_map =
-          &prev_cov
-               .try_emplace(name,
-                            std::map<std::string, std::set<std::string>>())
-               .first->second;
+          &prev_cov.try_emplace(name, std::set<std::string>()).first->second;
       continue;
     }
 
@@ -439,24 +401,14 @@ static void __cov_read_prev_cov() {
       continue;
     }
 
-    if (type == "F") {
+    if (type == "Func") {
       if (cur_file_map == nullptr) {
         found_error = true;
         continue;
       }
 
-      cur_func_map = &(*cur_file_map)
-                          .try_emplace(name, std::set<std::string>())
-                          .first->second;
-      continue;
+      cur_file_map->insert(name);
     }
-
-    if (cur_func_map == nullptr) {
-      found_error = true;
-      continue;
-    }
-
-    cur_func_map->insert(name);
   }
   cov_file_in.close();
 
@@ -469,20 +421,20 @@ static void __cov_read_prev_cov() {
 }
 
 void __cov_fini() {
-  if (bb_cov_arr == nullptr) {
+  if (func_cov_arr == nullptr) {
     return;
   }
 
   // previous coverage collected from existing coverage files
-#ifndef WRITE_COV_PER_BB
+#ifndef WRITE_COV_PER_FUNC
   __cov_read_prev_cov();
 #endif
 
-  std::cout << "[bb_cov] Writing coverage info to files..." << std::endl;
+  std::cout << "[func_cov] Writing coverage info to files..." << std::endl;
   __write_cov();
 
-  free(bb_cov_arr);
-  bb_cov_arr = nullptr;
+  free(func_cov_arr);
+  func_cov_arr = nullptr;
   return;
 }
 

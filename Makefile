@@ -23,9 +23,10 @@ CXXFLAGS += -DLLVM_MAJOR=$(LLVM_MAJOR)
 
 LDFLAGS = `llvm-config --ldflags --system-libs --libs core passes`
 
-all: bb_cov path_cov func_seq
+all: bb_cov path_cov func_seq func_cov
 
 bb_cov: build/bb_cov_pass.so build/bb_cov_rt.a build/bb_cov_instant_rt.a
+func_cov: build/func_cov_pass.so build/func_cov_rt.a
 path_cov: build/path_cov_pass.so build/path_cov_rt.a
 func_seq: build/func_seq_pass.so build/func_seq_rt.a
 
@@ -38,6 +39,12 @@ build/pass_bb_map.o: src/bb/bb_map.cc include/bb/bb_map.hpp
 build/bb_cov_pass.o: src/bb/bb_cov_pass.cc include/bb/bb_cov_pass.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
 
+build/pass_func_map.o: src/func/func_map.cc include/func/func_map.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
+build/func_cov_pass.o: src/func/func_cov_pass.cc include/func/func_cov_pass.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
 build/bb_cov_pass.so: build/bb_cov_pass.o build/hash.o build/pass_bb_map.o
 	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
 
@@ -48,6 +55,13 @@ build/bb_cov_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
 build/bb_cov_instant_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_instant_rt.o -DWRITE_COV_PER_BB
 	$(AR) rsv $@ build/bb_cov_instant_rt.o build/hash.o
+
+build/func_cov_pass.so: build/func_cov_pass.o build/hash.o build/pass_func_map.o
+	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
+
+build/func_cov_rt.a: src/func/func_cov_rt.cc include/func/func_cov_rt.hpp build/hash.o
+	$(CXX) $(CXXFLAGS) -I include -c $< -o build/func_cov_rt.o
+	$(AR) rsv $@ build/func_cov_rt.o build/hash.o
 
 build/path_cov_pass.o: src/path/path_cov_pass.cc include/path/path_cov_pass.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@

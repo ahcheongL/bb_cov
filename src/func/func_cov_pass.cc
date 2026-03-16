@@ -1,5 +1,4 @@
-
-#include "bb/bb_cov_pass.hpp"
+#include "func/func_cov_pass.hpp"
 
 #include "utils/hash.hpp"
 #include "llvm/Demangle/Demangle.h"
@@ -14,8 +13,8 @@ static llvm::cl::opt<bool>
     is_verbose_mode("verbose", llvm::cl::desc("enable verbose output"),
                     llvm::cl::init(false));
 
-llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
-                                         llvm::ModuleAnalysisManager &MAM) {
+llvm::PreservedAnalyses FUNC_COV_Pass::run(llvm::Module &Module,
+                                           llvm::ModuleAnalysisManager &MAM) {
   Mod_ptr = &Module;
   llvm::LLVMContext &Ctx = Module.getContext();
   Ctxt_ptr = &Ctx;
@@ -31,27 +30,26 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
   llvm::Function *main_func = Module.getFunction("main");
   if (main_func == NULL) {
     llvm::errs()
-        << "[bb_cov] main function not found, skipping instrumentation.\n";
+        << "[func_cov] main function not found, skipping instrumentation.\n";
     return llvm::PreservedAnalyses::all();
   }
 
-  uint32_t num_instrumented_funcs = insert_bb_probes();
+  insert_func_probes();
 
   instrument_main(*main_func);
 
-  init_bb_map_rt();
+  init_func_map_rt();
 
-  llvm::GlobalVariable *num_bbs_global = new llvm::GlobalVariable(
+  llvm::GlobalVariable *num_funcs_global = new llvm::GlobalVariable(
       *Mod_ptr, int32Ty, true, llvm::GlobalValue::ExternalLinkage,
-      llvm::ConstantInt::get(int32Ty, bb_id), "__num_bbs");
+      llvm::ConstantInt::get(int32Ty, func_id), "__num_funcs");
 
   if (is_verbose_mode) {
-    llvm::outs() << "[bb_cov] Instrumented " << num_instrumented_funcs
-                 << " functions.\n";
+    llvm::outs() << "[func_cov] Instrumented " << func_id << " functions.\n";
   }
 
   delete IRB;
-  free_bb_map(file_bb_map);
+  free_func_map(file_func_map);
 
   std::string out;
   llvm::raw_string_ostream output(out);
@@ -67,7 +65,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
   return llvm::PreservedAnalyses::all();
 }
 
-void BB_COV_Pass::instrument_main(llvm::Function &Func) {
+void FUNC_COV_Pass::instrument_main(llvm::Function &Func) {
   llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
 
   llvm::Function *main_func = &Func;
@@ -127,13 +125,11 @@ void BB_COV_Pass::instrument_main(llvm::Function &Func) {
   return;
 }
 
-uint32_t BB_COV_Pass::insert_bb_probes() {
-  uint32_t num_instrumented_funcs = 0;
-
+void FUNC_COV_Pass::insert_func_probes() {
   std::set<llvm::Function *> dtor_funcs = get_dtor_funcs();
   const uint32_t num_dtor_funcs = dtor_funcs.size();
   if ((num_dtor_funcs > 0) && is_verbose_mode) {
-    llvm::outs() << "[bb_cov] Found " << dtor_funcs.size()
+    llvm::outs() << "[func_cov] Found " << dtor_funcs.size()
                  << " dtor functions.\n";
   }
 
@@ -143,7 +139,7 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
   for (llvm::Function &Func : Mod_ptr->functions()) {
     if (dtor_funcs.find(&Func) != dtor_funcs.end()) {
       if (is_verbose_mode) {
-        llvm::outs() << "[bb_cov] Skipping dtor function: " << Func.getName()
+        llvm::outs() << "[func_cov] Skipping dtor function: " << Func.getName()
                      << "\n";
       }
       continue;
@@ -190,8 +186,7 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
     }
 
     // normal functions under test
-    insert_bb_probe_one_func(Func, filename);
-    num_instrumented_funcs++;
+    insert_func_probe_one_func(Func, filename);
   }
 
   if ((num_no_subprogram / (float)num_func) > 0.7) {
@@ -202,11 +197,11 @@ uint32_t BB_COV_Pass::insert_bb_probes() {
            "The program may not be instrumented with debug information.\n";
   }
 
-  return num_instrumented_funcs;
+  return;
 }
 
-void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
-                                           const std::string &filename) {
+void FUNC_COV_Pass::insert_func_probe_one_func(llvm::Function &Func,
+                                               const std::string &filename) {
   std::string func_name = llvm::demangle(Func.getName().str());
   if (func_name.find(".") != std::string::npos) {
     func_name = func_name.substr(0, func_name.find("."));
@@ -216,71 +211,19 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
   llvm::GlobalVariable *func_name_const = gen_new_string_constant(func_name);
 
   GFuncEntry *func_entry = insert_FileFuncEntry(
-      file_bb_map, filename, filename_const, func_name, func_name_const);
+      file_func_map, filename, filename_const, func_name, func_name_const);
 
-  std::map<std::string, uint32_t> bb_name_count = {};
+  llvm::FunctionCallee record_func = Mod_ptr->getOrInsertFunction(
+      "__record_func_cov", voidTy, int8PtrTy, int8PtrTy, int32Ty);
 
-  llvm::FunctionCallee record_bb = Mod_ptr->getOrInsertFunction(
-      "__record_bb_cov", voidTy, int8PtrTy, int8PtrTy, int8PtrTy, int32Ty);
+  llvm::BasicBlock &entry_bb = Func.getEntryBlock();
 
-  for (llvm::BasicBlock &BB : Func) {
-    auto first_inst = BB.getFirstNonPHIOrDbgOrLifetime();
-    llvm::Instruction *first_instr =
-        llvm::dyn_cast<llvm::Instruction>(first_inst);
+  IRB->SetInsertPoint(entry_bb.getFirstNonPHIOrDbgOrLifetime());
 
-    if (llvm::isa<llvm::LandingPadInst>(first_instr)) {
-      continue;
-    }
-    if (is_probe_BB(BB)) {
-      continue;
-    }
+  IRB->CreateCall(record_func, {filename_const, func_name_const,
+                                llvm::ConstantInt::get(int32Ty, func_id)});
 
-    uint32_t begin_line_num = -1;
-    uint32_t end_line_num = 0;
-
-    for (llvm::Instruction &IN : BB) {
-      const llvm::DebugLoc &debugInfo = IN.getDebugLoc();
-      if (!debugInfo) {
-        continue;
-      }
-
-      const uint32_t line_num = debugInfo.getLine();
-      if (line_num == 0) {
-        continue;
-      }
-
-      if (line_num < begin_line_num) {
-        begin_line_num = line_num;
-      }
-      if (line_num > end_line_num) {
-        end_line_num = line_num;
-      }
-    }
-
-    std::string BB_name = "";
-    if (begin_line_num == -1) {
-      BB_name = "bb_" + std::to_string(bb_name_count["bb"]++);
-    } else {
-      BB_name =
-          std::to_string(begin_line_num) + ":" + std::to_string(end_line_num);
-
-      if (bb_name_count.find(BB_name) != bb_name_count.end()) {
-        uint32_t index = bb_name_count[BB_name];
-        bb_name_count[BB_name] = index + 1;
-        BB_name = BB_name + "_" + std::to_string(index);
-      } else {
-        bb_name_count[BB_name] = 1;
-      }
-    }
-
-    IRB->SetInsertPoint(first_instr);
-    llvm::GlobalVariable *bb_name_const = gen_new_string_constant(BB_name);
-    IRB->CreateCall(record_bb, {filename_const, func_name_const, bb_name_const,
-                                llvm::ConstantInt::get(int32Ty, bb_id)});
-    bb_id++;
-
-    insert_BBEntry(func_entry, BB_name, bb_name_const);
-  }
+  func_id++;
 
   llvm::FunctionCallee cov_fini =
       Mod_ptr->getOrInsertFunction("__cov_fini", voidTy);
@@ -309,7 +252,7 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
   return;
 }
 
-llvm::GlobalVariable *BB_COV_Pass::gen_cfile_entry(GFileEntry *file_entry) {
+llvm::GlobalVariable *FUNC_COV_Pass::gen_cfile_entry(GFileEntry *file_entry) {
   const uint32_t hash_map_size = sizeof(unsigned char) * 256;
   llvm::PointerType *cfileEntryPtrTy = llvm::PointerType::get(cfileEntryTy, 0);
   llvm::Constant *cfileEntry_null =
@@ -363,18 +306,12 @@ llvm::GlobalVariable *BB_COV_Pass::gen_cfile_entry(GFileEntry *file_entry) {
   return prev_file_entry;
 }
 
-llvm::GlobalVariable *BB_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
+llvm::GlobalVariable *FUNC_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
   const uint32_t hash_map_size = sizeof(unsigned char) * 256;
 
   llvm::PointerType *cfuncEntryPtrTy = llvm::PointerType::get(cfuncEntryTy, 0);
   llvm::Constant *cfuncEntry_null =
       llvm::ConstantPointerNull::get(cfuncEntryPtrTy);
-
-  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
-  llvm::Constant *cbbEntry_null = llvm::ConstantPointerNull::get(cbbEntryPtrTy);
-
-  llvm::ArrayType *cbbEntryPtrArrayTy =
-      llvm::ArrayType::get(cbbEntryPtrTy, hash_map_size);
 
   std::vector<GFuncEntry *> cur_func_entries = {};
   while (func_entry != NULL) {
@@ -385,26 +322,13 @@ llvm::GlobalVariable *BB_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
 
   llvm::GlobalVariable *prev_func_entry = NULL;
   for (GFuncEntry *func_entry : cur_func_entries) {
-    std::vector<llvm::Constant *> cbb_entries = {};
-    for (size_t bb_idx = 0; bb_idx < hash_map_size; bb_idx++) {
-      GBBEntry *bb_entry = func_entry->bbs[bb_idx];
-      if (bb_entry == NULL) {
-        cbb_entries.push_back(cbbEntry_null);
-        continue;
-      }
-      llvm::GlobalVariable *new_cbb_entry = gen_cbb_entry(bb_entry);
-      cbb_entries.push_back(new_cbb_entry);
-    }
-
-    llvm::Constant *cbb_val =
-        llvm::ConstantArray::get(cbbEntryPtrArrayTy, cbb_entries);
-
     llvm::Constant *prev_val = cfuncEntry_null;
     if (prev_func_entry != NULL) {
       prev_val = prev_func_entry;
     }
     llvm::Constant *new_cfunc_val = llvm::ConstantStruct::get(
-        cfuncEntryTy, {cbb_val, func_entry->func_gvar, prev_val});
+        cfuncEntryTy,
+        {func_entry->func_gvar, prev_val, llvm::ConstantInt::get(int8Ty, 0)});
     llvm::GlobalVariable *new_cfunc_entry = new llvm::GlobalVariable(
         *Mod_ptr, cfuncEntryTy, false, llvm::GlobalValue::PrivateLinkage,
         new_cfunc_val);
@@ -414,52 +338,17 @@ llvm::GlobalVariable *BB_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
   return prev_func_entry;
 }
 
-llvm::GlobalVariable *BB_COV_Pass::gen_cbb_entry(GBBEntry *bb_entry) {
-  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
-  llvm::Constant *cbbEntry_null = llvm::ConstantPointerNull::get(cbbEntryPtrTy);
-  llvm::Constant *zero_val = llvm::ConstantInt::get(int8Ty, 0);
-
-  std::vector<GBBEntry *> cur_bb_entries = {};
-  while (bb_entry != NULL) {
-    cur_bb_entries.push_back(bb_entry);
-    bb_entry = bb_entry->next;
-  }
-
-  std::reverse(cur_bb_entries.begin(), cur_bb_entries.end());
-  llvm::GlobalVariable *prev_bb_entry = NULL;
-  for (GBBEntry *bb_entry : cur_bb_entries) {
-    llvm::Constant *prev_val = cbbEntry_null;
-    if (prev_bb_entry != NULL) {
-      prev_val = prev_bb_entry;
-    }
-    llvm::Constant *new_cbb_val = llvm::ConstantStruct::get(
-        cbbEntryTy, {bb_entry->bb_gvar, prev_val, zero_val});
-    llvm::GlobalVariable *new_cbb_entry = new llvm::GlobalVariable(
-        *Mod_ptr, cbbEntryTy, false, llvm::GlobalValue::PrivateLinkage,
-        new_cbb_val);
-    prev_bb_entry = new_cbb_entry;
-  }
-
-  return prev_bb_entry;
-}
-
-void BB_COV_Pass::init_bb_map_rt() {
+void FUNC_COV_Pass::init_func_map_rt() {
   llvm::LLVMContext &Ctx = *Ctxt_ptr;
 
   llvm::Type *int8PtrPtrTy = llvm::PointerType::get(int8PtrTy, 0);
 
   const uint32_t hash_map_size = sizeof(unsigned char) * 256;
 
-  cbbEntryTy = llvm::StructType::create(Ctx, "struct.CBBEntry");
-  llvm::PointerType *cbbEntryPtrTy = llvm::PointerType::get(cbbEntryTy, 0);
-
-  cbbEntryTy->setBody({int8PtrTy, cbbEntryPtrTy, int8Ty});
-
   cfuncEntryTy = llvm::StructType::create(Ctx, "struct.CFuncEntry");
   llvm::PointerType *cfuncEntryPtrTy = llvm::PointerType::get(cfuncEntryTy, 0);
 
-  cfuncEntryTy->setBody({llvm::ArrayType::get(cbbEntryPtrTy, hash_map_size),
-                         int8PtrTy, cfuncEntryPtrTy});
+  cfuncEntryTy->setBody({int8PtrTy, cfuncEntryPtrTy, int8Ty});
 
   cfileEntryTy = llvm::StructType::create(Ctx, "struct.CFileEntry");
   llvm::PointerType *cfileEntryPtrTy = llvm::PointerType::get(cfileEntryTy, 0);
@@ -473,7 +362,7 @@ void BB_COV_Pass::init_bb_map_rt() {
   std::vector<llvm::Constant *> file_map_entries = {};
 
   for (uint32_t file_idx = 0; file_idx < hash_map_size; file_idx++) {
-    GFileEntry *file_entry = file_bb_map[file_idx];
+    GFileEntry *file_entry = file_func_map[file_idx];
     if (file_entry == NULL) {
       file_map_entries.push_back(null_cfile_entry);
       continue;
@@ -496,7 +385,7 @@ void BB_COV_Pass::init_bb_map_rt() {
 }
 
 llvm::GlobalVariable *
-BB_COV_Pass::gen_new_string_constant(const std::string &name) {
+FUNC_COV_Pass::gen_new_string_constant(const std::string &name) {
   auto search = new_string_globals.find(name);
 
   if (search == new_string_globals.end()) {
@@ -509,7 +398,7 @@ BB_COV_Pass::gen_new_string_constant(const std::string &name) {
   return search->second;
 }
 
-std::set<llvm::Function *> BB_COV_Pass::get_dtor_funcs() {
+std::set<llvm::Function *> FUNC_COV_Pass::get_dtor_funcs() {
   std::set<llvm::Function *> dtor_funcs = {};
 
   llvm::GlobalVariable *global_dtors =
@@ -548,7 +437,7 @@ std::set<llvm::Function *> BB_COV_Pass::get_dtor_funcs() {
   return dtor_funcs;
 }
 
-bool BB_COV_Pass::is_probe_func(llvm::Function &Func) {
+bool FUNC_COV_Pass::is_probe_func(llvm::Function &Func) {
   if (!Func.hasFnAttribute("annotate")) {
     return false;
   }
@@ -560,22 +449,17 @@ bool BB_COV_Pass::is_probe_func(llvm::Function &Func) {
   return false;
 }
 
-bool BB_COV_Pass::is_probe_BB(llvm::BasicBlock &BB) {
-  llvm::MDNode *Node = BB.getTerminator()->getMetadata("is_probe");
-  return (Node != nullptr);
-}
-
 extern "C" ::llvm::PassPluginLibraryInfo llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, // Plugin API version
-          "BBCovPassPlugin",       // Plugin name
+          "FuncCovPassPlugin",     // Plugin name
           LLVM_VERSION_STRING,     // LLVM version
           [](llvm::PassBuilder &PB) {
             // Register module-level pass
             PB.registerPipelineParsingCallback(
                 [](llvm::StringRef Name, llvm::ModulePassManager &MPM,
                    llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
-                  if (Name == "bbcov") {
-                    MPM.addPass(BB_COV_Pass());
+                  if (Name == "funccov") {
+                    MPM.addPass(FUNC_COV_Pass());
                     return true;
                   }
                   return false;
