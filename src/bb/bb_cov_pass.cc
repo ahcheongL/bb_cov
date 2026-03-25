@@ -4,6 +4,7 @@
 #include "utils/hash.hpp"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
@@ -241,6 +242,25 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
     for (llvm::Instruction &IN : BB) {
       const llvm::DebugLoc &debugInfo = IN.getDebugLoc();
       if (!debugInfo) {
+        continue;
+      }
+
+      llvm::MDNode *scope = debugInfo.getScope();
+      if (scope == NULL) {
+        continue;
+      }
+
+      llvm::DISubprogram *subprogram =
+          llvm::dyn_cast<llvm::DISubprogram>(scope);
+      if (subprogram == NULL) {
+        continue;
+      }
+
+      if (subprogram->getTargetFuncName() != func_name) {
+        llvm::errs() << "[bb_cov] Warning: Debug info function name ("
+                     << subprogram->getTargetFuncName().str()
+                     << ") does not match actual function name (" << func_name
+                     << "). The bitcode seems built with optimization.\n";
         continue;
       }
 

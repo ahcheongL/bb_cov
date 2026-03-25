@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import os, sys, glob
+import glob
+import os
+import sys
 
 
 def format_file_name(fn: str) -> str:
