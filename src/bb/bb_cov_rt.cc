@@ -16,6 +16,7 @@
 #include <sstream>
 
 #include "utils/hash.hpp"
+#include "utils/progress_bar.hpp"
 
 static const char *cov_output_fn = nullptr;
 
@@ -31,39 +32,6 @@ static std::map<std::string, std::map<std::string, std::set<std::string>>>
                              apply_to = function)
 
 extern "C" {
-
-void show_progress(size_t current, size_t total,
-                   std::chrono::steady_clock::time_point start_time) {
-  double progress = (double)current / total;
-  int barWidth = 40;
-
-  // Print progress bar
-  std::cout << "[";
-  int pos = barWidth * progress;
-  for (int i = 0; i < barWidth; ++i) {
-    if (i < pos)
-      std::cout << "=";
-    else if (i == pos)
-      std::cout << ">";
-    else
-      std::cout << " ";
-  }
-  std::cout << "] ";
-
-  // Print percentage
-  std::cout << std::fixed << std::setprecision(1) << progress * 100.0 << "% ";
-
-  // Calculate estimated remaining time
-  auto now = std::chrono::steady_clock::now();
-  double elapsed = std::chrono::duration<double>(now - start_time).count();
-  double eta = (elapsed / progress) - elapsed; // estimated remaining
-  if (current == 0)
-    eta = 0; // avoid division by zero
-
-  std::cout << "ETA: " << std::fixed << std::setprecision(1) << eta << "s\r";
-  std::cout.flush();
-}
-
 void __handle_init(int32_t *argc_ptr, char **argv) {
   const char *env_output_fn = getenv(OUTPUT_FN);
 
@@ -171,12 +139,11 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
   auto start_time = std::chrono::steady_clock::now();
 
   for (const auto &entry : dir_iter) {
-    std::string basename = entry.path().filename().string();
     if (!entry.is_regular_file()) {
       continue;
     }
 
-    basename = entry.path().filename().string();
+    std::string basename = entry.path().filename().string();
     if (basename.rfind("id:", 0) != 0) { // starts with "id:"
       continue;
     }
@@ -228,6 +195,8 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     input_idx++;
     show_progress(input_idx, num_inputs, start_time);
   }
+
+  PROGRESS_BAR_END();
 
   std::cout << "\n[bb_cov] All " << input_idx << " inputs processed."
             << std::endl;

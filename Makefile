@@ -33,6 +33,9 @@ func_seq: build/func_seq_pass.so build/func_seq_rt.a
 build/hash.o: src/utils/hash.cc include/utils/hash.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
 
+build/progress_bar.o: src/utils/progress_bar.cc include/utils/progress_bar.hpp
+	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
+
 build/pass_bb_map.o: src/bb/bb_map.cc include/bb/bb_map.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
 
@@ -48,20 +51,20 @@ build/func_cov_pass.o: src/func/func_cov_pass.cc include/func/func_cov_pass.hpp
 build/bb_cov_pass.so: build/bb_cov_pass.o build/hash.o build/pass_bb_map.o
 	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
 
-build/bb_cov_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
+build/bb_cov_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o build/progress_bar.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_rt.o
-	$(AR) rsv $@ build/bb_cov_rt.o build/hash.o
+	$(AR) rsv $@ build/bb_cov_rt.o build/hash.o build/progress_bar.o
 
-build/bb_cov_instant_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o
+build/bb_cov_instant_rt.a: src/bb/bb_cov_rt.cc include/bb/bb_cov_rt.hpp build/hash.o build/progress_bar.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/bb_cov_instant_rt.o -DWRITE_COV_PER_BB
-	$(AR) rsv $@ build/bb_cov_instant_rt.o build/hash.o
+	$(AR) rsv $@ build/bb_cov_instant_rt.o build/hash.o build/progress_bar.o
 
 build/func_cov_pass.so: build/func_cov_pass.o build/hash.o build/pass_func_map.o
 	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
 
-build/func_cov_rt.a: src/func/func_cov_rt.cc include/func/func_cov_rt.hpp build/hash.o
+build/func_cov_rt.a: src/func/func_cov_rt.cc include/func/func_cov_rt.hpp build/hash.o build/progress_bar.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/func_cov_rt.o
-	$(AR) rsv $@ build/func_cov_rt.o build/hash.o
+	$(AR) rsv $@ build/func_cov_rt.o build/hash.o build/progress_bar.o
 
 build/path_cov_pass.o: src/path/path_cov_pass.cc include/path/path_cov_pass.hpp
 	$(CXX) $(CXXFLAGS) -I include -c $< -o $@
@@ -69,9 +72,9 @@ build/path_cov_pass.o: src/path/path_cov_pass.cc include/path/path_cov_pass.hpp
 build/path_cov_pass.so: build/path_cov_pass.o
 	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
 
-build/path_cov_rt.a: src/path/path_cov_rt.cc include/path/path_cov_rt.hpp
-	$(CXX) $(CXXFLAGS) -I include -c $< -o build/path_cov_rt.o
-	$(AR) rsv $@ build/path_cov_rt.o
+build/path_cov_rt.a: src/path/path_cov_rt.cc include/path/path_cov_rt.hpp build/progress_bar.o
+	$(CXX) $(CXXFLAGS) -I include -c $< -o build/path_cov_rt.o 
+	$(AR) rsv $@ build/path_cov_rt.o build/progress_bar.o
 
 
 build/func_seq_pass.o: src/func/func_seq_pass.cc include/func/func_seq_pass.hpp
@@ -80,9 +83,9 @@ build/func_seq_pass.o: src/func/func_seq_pass.cc include/func/func_seq_pass.hpp
 build/func_seq_pass.so: build/func_seq_pass.o
 	$(CXX) $(LDFLAGS) -I include -shared -o $@ $^
 
-build/func_seq_rt.a: src/func/func_seq_rt.cc include/func/func_seq_rt.hpp
+build/func_seq_rt.a: src/func/func_seq_rt.cc include/func/func_seq_rt.hpp build/progress_bar.o
 	$(CXX) $(CXXFLAGS) -I include -c $< -o build/func_seq_rt.o
-	$(AR) rsv $@ build/func_seq_rt.o
+	$(AR) rsv $@ build/func_seq_rt.o build/progress_bar.o	
 
 clean:
 	rm -rf build/*

@@ -6,22 +6,14 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-#include <fstream>
-#include <iostream>
 #include <map>
-#include <set>
-#include <sstream>
 #include <string>
-#include <vector>
 
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/PassManager.h"
 
-using namespace std;
 
 class Path_COV_Pass : public llvm::PassInfoMixin<Path_COV_Pass> {
  public:
@@ -46,7 +38,7 @@ class Path_COV_Pass : public llvm::PassInfoMixin<Path_COV_Pass> {
 
   unsigned int bb_id = 1;
 
-  map<string, llvm::GlobalVariable *> new_string_globals = {};
-  llvm::GlobalVariable *gen_new_string_constant(const string &name);
+  std::map<std::string, llvm::GlobalVariable *> new_string_globals = {};
+  llvm::GlobalVariable *gen_new_string_constant(const std::string &name);
 };
 #endif

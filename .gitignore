@@ -63,3 +63,7 @@ compile_commands.json
 
 test/funcseq
 .note.txt
+
+test/tmp_inputs
+test/timeout.path
+test/timeout.path.cov.txt

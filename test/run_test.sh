@@ -5,9 +5,10 @@ cd "$(dirname "$0")"
 
 rm -f out void_main crash *.bc *.cov *.path *.bb *.func
 
-clang -g -c -emit-llvm main.cc -o main.bc
-clang -g -c -emit-llvm void_main.cc -o void_main.bc
-clang -g -c -emit-llvm crash.cc -o crash.bc
+clang++ -g -c -emit-llvm main.cc -o main.bc
+clang++ -g -c -emit-llvm void_main.cc -o void_main.bc
+clang++ -g -c -emit-llvm crash.cc -o crash.bc
+clang -g -c -emit-llvm timeout.c -o timeout.bc
 
 opt -load-pass-plugin=../build/bb_cov_pass.so -passes=bbcov main.bc -o bbout.bc
 clang++ bbout.bc -O0 -o bbout.cov -L../build -l:bb_cov_rt.a 
@@ -79,3 +80,17 @@ echo ""
 echo "Coverage result for crash program:"
 cat crash.cov
 echo ""
+
+
+opt -load-pass-plugin=../build/path_cov_pass.so -passes=pathcov timeout.bc -o timeout.path.bc
+clang++ timeout.path.bc -o timeout.path -L../build -l:path_cov_rt.a
+
+mkdir -p tmp_inputs
+for i in {0..4}; do
+  echo "0" > tmp_inputs/id:$i
+done
+
+
+time ./timeout.path ./tmp_inputs timeout.path.cov.txt
+
+cat timeout.path.cov.txt
