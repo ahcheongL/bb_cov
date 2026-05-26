@@ -17,7 +17,7 @@ static const char *cov_output_fn = nullptr;
 static int path_hash_fd[2];
 namespace fs = std::filesystem;
 
-#define TIMEOUT_MILLISECONDS 5000
+#define TIMEOUT_MILLISECONDS 1000
 
 #pragma clang attribute push(__attribute__((annotate("probe_function"))),      \
                              apply_to = function)

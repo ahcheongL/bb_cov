@@ -232,72 +232,80 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
     if (llvm::isa<llvm::LandingPadInst>(first_instr)) {
       continue;
     }
+
     if (is_probe_BB(BB)) {
       continue;
     }
 
-    uint32_t begin_line_num = -1;
-    uint32_t end_line_num = 0;
+    std::string BB_name = BB.getName().str();
+    uint32_t BB_id = std::stoi(BB_name);
 
-    for (llvm::Instruction &IN : BB) {
-      const llvm::DebugLoc &debugInfo = IN.getDebugLoc();
-      if (!debugInfo) {
-        continue;
+    if (BB_name == "") {
+      // groovy assigns unique BB names, but we may need own BB names
+      // based on line numbers for better readability.
+      uint32_t begin_line_num = -1;
+      uint32_t end_line_num = 0;
+      for (llvm::Instruction &IN : BB) {
+        const llvm::DebugLoc &debugInfo = IN.getDebugLoc();
+        if (!debugInfo) {
+          continue;
+        }
+
+        llvm::MDNode *scope = debugInfo.getScope();
+        if (scope == NULL) {
+          continue;
+        }
+
+        llvm::DISubprogram *subprogram =
+            llvm::dyn_cast<llvm::DISubprogram>(scope);
+        if (subprogram == NULL) {
+          continue;
+        }
+
+        if (subprogram->getTargetFuncName() != func_name) {
+          llvm::errs() << "[bb_cov] Warning: Debug info function name ("
+                       << subprogram->getTargetFuncName().str()
+                       << ") does not match actual function name (" << func_name
+                       << "). The bitcode seems built with optimization.\n";
+          continue;
+        }
+
+        const uint32_t line_num = debugInfo.getLine();
+        if (line_num == 0) {
+          continue;
+        }
+
+        if (line_num < begin_line_num) {
+          begin_line_num = line_num;
+        }
+        if (line_num > end_line_num) {
+          end_line_num = line_num;
+        }
       }
 
-      llvm::MDNode *scope = debugInfo.getScope();
-      if (scope == NULL) {
-        continue;
-      }
-
-      llvm::DISubprogram *subprogram =
-          llvm::dyn_cast<llvm::DISubprogram>(scope);
-      if (subprogram == NULL) {
-        continue;
-      }
-
-      if (subprogram->getTargetFuncName() != func_name) {
-        llvm::errs() << "[bb_cov] Warning: Debug info function name ("
-                     << subprogram->getTargetFuncName().str()
-                     << ") does not match actual function name (" << func_name
-                     << "). The bitcode seems built with optimization.\n";
-        continue;
-      }
-
-      const uint32_t line_num = debugInfo.getLine();
-      if (line_num == 0) {
-        continue;
-      }
-
-      if (line_num < begin_line_num) {
-        begin_line_num = line_num;
-      }
-      if (line_num > end_line_num) {
-        end_line_num = line_num;
-      }
-    }
-
-    std::string BB_name = "";
-    if (begin_line_num == -1) {
-      BB_name = "bb_" + std::to_string(bb_name_count["bb"]++);
-    } else {
-      BB_name =
-          std::to_string(begin_line_num) + ":" + std::to_string(end_line_num);
-
-      if (bb_name_count.find(BB_name) != bb_name_count.end()) {
-        uint32_t index = bb_name_count[BB_name];
-        bb_name_count[BB_name] = index + 1;
-        BB_name = BB_name + "_" + std::to_string(index);
+      std::string BB_name = "";
+      if (begin_line_num == -1) {
+        BB_name = "bb_" + std::to_string(bb_name_count["bb"]++);
       } else {
-        bb_name_count[BB_name] = 1;
+        BB_name =
+            std::to_string(begin_line_num) + ":" + std::to_string(end_line_num);
+
+        if (bb_name_count.find(BB_name) != bb_name_count.end()) {
+          uint32_t index = bb_name_count[BB_name];
+          bb_name_count[BB_name] = index + 1;
+          BB_name = BB_name + "_" + std::to_string(index);
+        } else {
+          bb_name_count[BB_name] = 1;
+        }
       }
+
+      BB_id = bb_id++;
     }
 
     IRB->SetInsertPoint(first_instr);
     llvm::GlobalVariable *bb_name_const = gen_new_string_constant(BB_name);
     IRB->CreateCall(record_bb, {filename_const, func_name_const, bb_name_const,
-                                llvm::ConstantInt::get(int32Ty, bb_id)});
-    bb_id++;
+                                llvm::ConstantInt::get(int32Ty, BB_id)});
 
     insert_BBEntry(func_entry, BB_name, bb_name_const);
   }

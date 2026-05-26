@@ -49,7 +49,7 @@ private:
   llvm::StructType *cfuncEntryTy = NULL;
   llvm::StructType *cbbEntryTy = NULL;
 
-  uint32_t bb_id = 0;
+  uint32_t bb_id = 1;
 
   // Entire basic block map
   // file -> func -> set(bb)
