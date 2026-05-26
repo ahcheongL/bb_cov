@@ -44,7 +44,7 @@ llvm::PreservedAnalyses BB_COV_Pass::run(llvm::Module &Module,
 
   llvm::GlobalVariable *num_bbs_global = new llvm::GlobalVariable(
       *Mod_ptr, int32Ty, true, llvm::GlobalValue::ExternalLinkage,
-      llvm::ConstantInt::get(int32Ty, bb_id), "__num_bbs");
+      llvm::ConstantInt::get(int32Ty, max_bb_id), "__num_bbs");
 
   if (is_verbose_mode) {
     llvm::outs() << "[bb_cov] Instrumented " << num_instrumented_funcs
@@ -306,6 +306,10 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
     llvm::GlobalVariable *bb_name_const = gen_new_string_constant(BB_name);
     IRB->CreateCall(record_bb, {filename_const, func_name_const, bb_name_const,
                                 llvm::ConstantInt::get(int32Ty, BB_id)});
+
+    if (max_bb_id < BB_id) {
+      max_bb_id = BB_id;
+    }
 
     insert_BBEntry(func_entry, BB_name, bb_name_const);
   }
