@@ -238,11 +238,22 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
     }
 
     std::string BB_name = BB.getName().str();
-    uint32_t BB_id = std::stoi(BB_name);
+    uint32_t BB_id = 0;
 
+    // groovy assigns unique *numeric* BB names; when present, reuse the number
+    // directly as the BB id. Otherwise (empty or textual name such as "entry")
+    // assign a fresh id from the running counter. Calling std::stoi on a
+    // non-numeric name throws std::invalid_argument, so guard it explicitly.
+    const bool is_numeric_name =
+        !BB_name.empty() &&
+        BB_name.find_first_not_of("0123456789") == std::string::npos;
+
+    if (is_numeric_name) {
+      BB_id = std::stoi(BB_name);
+    } 
+    
     if (BB_name == "") {
-      // groovy assigns unique BB names, but we may need own BB names
-      // based on line numbers for better readability.
+      // No name in the IR: derive a readable name from line numbers.
       uint32_t begin_line_num = -1;
       uint32_t end_line_num = 0;
       for (llvm::Instruction &IN : BB) {
@@ -264,9 +275,10 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
 
         if (subprogram->getTargetFuncName() != func_name) {
           llvm::errs() << "[bb_cov] Warning: Debug info function name ("
-                       << subprogram->getTargetFuncName().str()
-                       << ") does not match actual function name (" << func_name
-                       << "). The bitcode seems built with optimization.\n";
+                        << subprogram->getTargetFuncName().str()
+                        << ") does not match actual function name ("
+                        << func_name
+                        << "). The bitcode seems built with optimization.\n";
           continue;
         }
 
@@ -283,12 +295,11 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
         }
       }
 
-      std::string BB_name = "";
       if (begin_line_num == -1) {
         BB_name = "bb_" + std::to_string(bb_name_count["bb"]++);
       } else {
-        BB_name =
-            std::to_string(begin_line_num) + ":" + std::to_string(end_line_num);
+        BB_name = std::to_string(begin_line_num) + ":" +
+                  std::to_string(end_line_num);
 
         if (bb_name_count.find(BB_name) != bb_name_count.end()) {
           uint32_t index = bb_name_count[BB_name];
@@ -298,9 +309,9 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
           bb_name_count[BB_name] = 1;
         }
       }
-
-      BB_id = bb_id++;
     }
+
+    BB_id = bb_id++;
 
     IRB->SetInsertPoint(first_instr);
     llvm::GlobalVariable *bb_name_const = gen_new_string_constant(BB_name);
