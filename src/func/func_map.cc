@@ -12,9 +12,10 @@ GFuncEntry *insert_FileFuncEntry(GFileEntry **file_map,
                                  llvm::GlobalVariable *file_gvar,
                                  const std::string &func_name,
                                  llvm::GlobalVariable *func_gvar) {
+
   GFileEntry *file_entry = insert_FileEntry(file_map, filename, file_gvar);
 
-  uint8_t func_name_hash = simple_hash(func_name);
+  uint8_t func_name_hash = bb_cov_simple_hash(func_name);
 
   if (file_entry->funcs[func_name_hash] == nullptr) {
     GFuncEntry *new_entry = new GFuncEntry();
@@ -44,7 +45,7 @@ GFuncEntry *insert_FileFuncEntry(GFileEntry **file_map,
 
 GFileEntry *insert_FileEntry(GFileEntry **file_map, const std::string &filename,
                              llvm::GlobalVariable *file_gvar) {
-  uint8_t filename_hash = simple_hash(filename);
+  uint8_t filename_hash = bb_cov_simple_hash(filename);
 
   if (file_map[filename_hash] == nullptr) {
     GFileEntry *new_entry = new GFileEntry();

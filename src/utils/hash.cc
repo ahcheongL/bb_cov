@@ -1,9 +1,11 @@
 #include "utils/hash.hpp"
 
-u_int8_t simple_hash(const char *str) {
-  if (str == NULL) { return 0; }
+uint8_t bb_cov_simple_hash(const char *str) {
+  if (str == NULL) {
+    return 0;
+  }
 
-  u_int8_t hash = 0;
+  uint8_t hash = 0;
   while (*str) {
     hash ^= *str;
     str++;
@@ -11,6 +13,6 @@ u_int8_t simple_hash(const char *str) {
   return hash;
 }
 
-u_int8_t simple_hash(const std::string &str) {
-  return simple_hash(str.c_str());
+uint8_t bb_cov_simple_hash(const std::string &str) {
+  return bb_cov_simple_hash(str.c_str());
 }

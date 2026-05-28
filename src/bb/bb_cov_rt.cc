@@ -144,7 +144,7 @@ void __handle_init(int32_t *argc_ptr, char **argv) {
     }
 
     std::string basename = entry.path().filename().string();
-    if (basename.rfind("id:", 0) != 0) { // starts with "id:"
+    if (basename[0] == '.') { // starts with "."
       continue;
     }
 
@@ -223,9 +223,9 @@ void __record_bb_cov(const char *file_name, const char *func_name,
     bb_cov_arr[bb_id] = 1;
   }
 
-  uint8_t file_hash = simple_hash(file_name);
-  uint8_t func_hash = simple_hash(func_name);
-  uint8_t bb_hash = simple_hash(bb_name);
+  uint8_t file_hash = bb_cov_simple_hash(file_name);
+  uint8_t func_hash = bb_cov_simple_hash(func_name);
+  uint8_t bb_hash = bb_cov_simple_hash(bb_name);
 
   const CFileEntry *file_entry = __file_func_map[file_hash];
   // skip nullptr checks for speed, entry pointers should not be nullptr
@@ -235,6 +235,12 @@ void __record_bb_cov(const char *file_name, const char *func_name,
       break;
     }
     file_entry = file_entry->next;
+  }
+
+  if (file_entry == nullptr) {
+    std::cerr << "[bb_cov] Failed to find file entry for " << file_name
+              << ", hash: " << (uint32_t)file_hash << std::endl;
+    return;
   }
 
   const CFuncEntry *func_entry = file_entry->funcs[func_hash];

@@ -1,4 +1,5 @@
+#include <stdint.h>
 #include <string>
 
-u_int8_t simple_hash(const char *str);
-u_int8_t simple_hash(const std::string &str);
+uint8_t bb_cov_simple_hash(const char *str);
+uint8_t bb_cov_simple_hash(const std::string &str);

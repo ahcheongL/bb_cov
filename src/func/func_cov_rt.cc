@@ -225,8 +225,8 @@ void __record_func_cov(const char *file_name, const char *func_name,
     func_cov_arr[func_id] = 1;
   }
 
-  uint8_t file_hash = simple_hash(file_name);
-  uint8_t func_hash = simple_hash(func_name);
+  uint8_t file_hash = bb_cov_simple_hash(file_name);
+  uint8_t func_hash = bb_cov_simple_hash(func_name);
 
   const CFileEntry *file_entry = __file_func_map[file_hash];
   // skip nullptr checks for speed, entry pointers should not be nullptr

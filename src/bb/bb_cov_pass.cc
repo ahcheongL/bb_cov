@@ -250,8 +250,8 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
 
     if (is_numeric_name) {
       BB_id = std::stoi(BB_name);
-    } 
-    
+    }
+
     if (BB_name == "") {
       // No name in the IR: derive a readable name from line numbers.
       uint32_t begin_line_num = -1;
@@ -275,10 +275,9 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
 
         if (subprogram->getTargetFuncName() != func_name) {
           llvm::errs() << "[bb_cov] Warning: Debug info function name ("
-                        << subprogram->getTargetFuncName().str()
-                        << ") does not match actual function name ("
-                        << func_name
-                        << "). The bitcode seems built with optimization.\n";
+                       << subprogram->getTargetFuncName().str()
+                       << ") does not match actual function name (" << func_name
+                       << "). The bitcode seems built with optimization.\n";
           continue;
         }
 
@@ -298,8 +297,8 @@ void BB_COV_Pass::insert_bb_probe_one_func(llvm::Function &Func,
       if (begin_line_num == -1) {
         BB_name = "bb_" + std::to_string(bb_name_count["bb"]++);
       } else {
-        BB_name = std::to_string(begin_line_num) + ":" +
-                  std::to_string(end_line_num);
+        BB_name =
+            std::to_string(begin_line_num) + ":" + std::to_string(end_line_num);
 
         if (bb_name_count.find(BB_name) != bb_name_count.end()) {
           uint32_t index = bb_name_count[BB_name];
@@ -424,7 +423,7 @@ llvm::GlobalVariable *BB_COV_Pass::gen_cfunc_entry(GFuncEntry *func_entry) {
     cur_func_entries.push_back(func_entry);
     func_entry = func_entry->next;
   }
-  reverse(cur_func_entries.begin(), cur_func_entries.end());
+  std::reverse(cur_func_entries.begin(), cur_func_entries.end());
 
   llvm::GlobalVariable *prev_func_entry = NULL;
   for (GFuncEntry *func_entry : cur_func_entries) {
